@@ -1,0 +1,10 @@
+*.zip
+*.deb
+*.tar.gz
+*.tar.xz
+assets_tmp/
+.gradle/
+build/
+local.properties
+.idea/
+*.html

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Nextcloud Server</string>
+    <string name="server_running">Nextcloud Server is running</string>
+    <string name="server_stopped">Nextcloud Server is stopped</string>
+</resources>

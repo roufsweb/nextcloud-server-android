@@ -1,0 +1,17 @@
+[global]
+error_log = {{FILES_DIR}}/logs/php-fpm.log
+pid = {{FILES_DIR}}/run/php-fpm.pid
+
+[www]
+user = {{USER}}
+group = {{GROUP}}
+listen = 127.0.0.1:9000
+pm = static
+pm.max_children = 2
+pm.start_servers = 1
+pm.min_spare_servers = 1
+pm.max_spare_servers = 1
+chdir = {{FILES_DIR}}/nextcloud
+php_admin_value[error_log] = {{FILES_DIR}}/logs/php_error.log
+php_admin_flag[log_errors] = on
+catch_workers_output = yes
