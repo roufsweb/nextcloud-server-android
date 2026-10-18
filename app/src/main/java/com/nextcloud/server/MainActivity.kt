@@ -65,9 +65,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var portInput: TextInputEditText
     private lateinit var serverActionButton: MaterialButton
 
+    private lateinit var adminUserInputLayout: com.google.android.material.textfield.TextInputLayout
+    private lateinit var adminPassInputLayout: com.google.android.material.textfield.TextInputLayout
     private lateinit var adminUserInput: TextInputEditText
     private lateinit var adminPassInput: TextInputEditText
     private lateinit var updateCredentialsButton: MaterialButton
+    private lateinit var credentialsProgressContainer: View
+    private lateinit var credentialsProgressStatusText: TextView
+    private lateinit var credentialsProgressBar: LinearProgressIndicator
 
     private lateinit var currentDataDirText: TextView
     private lateinit var changeDataDirButton: MaterialButton
@@ -392,9 +397,14 @@ class MainActivity : AppCompatActivity() {
         portInput = findViewById(R.id.portInput)
         serverActionButton = findViewById(R.id.serverActionButton)
 
+        adminUserInputLayout = findViewById(R.id.adminUserInputLayout)
+        adminPassInputLayout = findViewById(R.id.adminPassInputLayout)
         adminUserInput = findViewById(R.id.adminUserInput)
         adminPassInput = findViewById(R.id.adminPassInput)
         updateCredentialsButton = findViewById(R.id.updateCredentialsButton)
+        credentialsProgressContainer = findViewById(R.id.credentialsProgressContainer)
+        credentialsProgressStatusText = findViewById(R.id.credentialsProgressStatusText)
+        credentialsProgressBar = findViewById(R.id.credentialsProgressBar)
 
         currentDataDirText = findViewById(R.id.currentDataDirText)
         changeDataDirButton = findViewById(R.id.changeDataDirButton)
@@ -1147,63 +1157,118 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateAdminCredentials() {
+        adminUserInputLayout.error = null
+        adminPassInputLayout.error = null
+
         val user = adminUserInput.text.toString().trim()
         val pass = adminPassInput.text.toString().trim()
-        if (user.isEmpty() || pass.isEmpty()) {
-            Toast.makeText(this, "Username and password cannot be empty", Toast.LENGTH_SHORT).show()
+        if (user.isEmpty()) {
+            adminUserInputLayout.error = "Username cannot be empty"
+            return
+        }
+        if (pass.isEmpty()) {
+            adminPassInputLayout.error = "Password cannot be empty"
+            return
+        }
+        if (pass.length < 8) {
+            adminPassInputLayout.error = "Password must be at least 8 characters (Nextcloud minimum requirement)"
             return
         }
 
-        prefs.edit().putString("admin_user", user).putString("admin_pass", pass).apply()
+        val activeSavedUser = prefs.getString("admin_user", "admin") ?: "admin"
+        val activeSavedPass = prefs.getString("admin_pass", "NextcloudAdmin123!") ?: "NextcloudAdmin123!"
 
         if (!nextcloudManager.isInstalled()) {
-            Toast.makeText(this, "Admin credentials saved! Will be created when server starts.", Toast.LENGTH_LONG).show()
+            prefs.edit().putString("admin_user", user).putString("admin_pass", pass).apply()
+            Toast.makeText(this, "Admin credentials saved! They will be used to initialize Nextcloud when the server starts.", Toast.LENGTH_LONG).show()
             return
         }
 
-        Toast.makeText(this, "Applying administrator credentials...", Toast.LENGTH_SHORT).show()
+        setCredentialsUpdating(true, "Verifying administrator account '$user'...")
+
         executor.execute {
             val exists = nextcloudManager.isUserExists(user)
             if (exists) {
+                runOnUiThread {
+                    setCredentialsUpdating(true, "Updating password for '$user' in Nextcloud...")
+                }
                 val ok = nextcloudManager.resetAdminPassword(user, pass)
                 runOnUiThread {
+                    setCredentialsUpdating(false)
                     if (ok.first) {
+                        prefs.edit().putString("admin_user", user).putString("admin_pass", pass).apply()
+                        adminUserInputLayout.error = null
+                        adminPassInputLayout.error = null
                         Toast.makeText(this, "Password for administrator '$user' updated successfully!", Toast.LENGTH_LONG).show()
                     } else {
-                        val errMsg = ok.second.ifEmpty { "Failed to update password for '$user'" }
+                        // Revert inputs so misleading credentials are not displayed
+                        adminUserInput.setText(activeSavedUser)
+                        adminPassInput.setText(activeSavedPass)
+                        val errMsg = ok.second.ifEmpty { "Password was rejected by Nextcloud password policy" }
+                        adminPassInputLayout.error = errMsg
                         createMaterialAlertDialog()
                             .setTitle("Could Not Update Password")
-                            .setMessage(errMsg)
+                            .setMessage("$errMsg\n\nThe credentials were not changed. Reverted to active credentials: '$activeSavedUser'.")
                             .setPositiveButton("OK", null)
                             .show()
                     }
                 }
             } else {
                 runOnUiThread {
+                    setCredentialsUpdating(false)
                     createMaterialAlertDialog()
                         .setTitle("Create Administrator Account")
                         .setMessage("No administrator named '$user' exists yet in Nextcloud.\n\nWould you like to create '$user' as an administrator with this password?")
                         .setPositiveButton("Create Admin") { _, _ ->
+                            setCredentialsUpdating(true, "Creating administrator account '$user'...")
                             executor.execute {
                                 val created = nextcloudManager.createAdminUser(user, pass)
                                 runOnUiThread {
+                                    setCredentialsUpdating(false)
                                     if (created.first) {
+                                        prefs.edit().putString("admin_user", user).putString("admin_pass", pass).apply()
+                                        adminUserInputLayout.error = null
+                                        adminPassInputLayout.error = null
                                         Toast.makeText(this, "Administrator account '$user' created successfully!", Toast.LENGTH_LONG).show()
                                     } else {
+                                        // Revert inputs so misleading credentials are not displayed
+                                        adminUserInput.setText(activeSavedUser)
+                                        adminPassInput.setText(activeSavedPass)
                                         val errMsg = created.second.ifEmpty { "Failed to create administrator '$user'" }
+                                        adminPassInputLayout.error = errMsg
                                         createMaterialAlertDialog()
                                             .setTitle("Could Not Create Administrator")
-                                            .setMessage(errMsg)
+                                            .setMessage("$errMsg\n\nReverted to active credentials: '$activeSavedUser'.")
                                             .setPositiveButton("OK", null)
                                             .show()
                                     }
                                 }
                             }
                         }
-                        .setNegativeButton("Cancel", null)
+                        .setNegativeButton("Cancel") { _, _ ->
+                            adminUserInput.setText(activeSavedUser)
+                            adminPassInput.setText(activeSavedPass)
+                        }
                         .show()
                 }
             }
+        }
+    }
+
+    private fun setCredentialsUpdating(updating: Boolean, message: String = "") {
+        if (updating) {
+            credentialsProgressContainer.visibility = View.VISIBLE
+            credentialsProgressStatusText.text = message
+            updateCredentialsButton.isEnabled = false
+            updateCredentialsButton.text = "Saving..."
+            adminUserInput.isEnabled = false
+            adminPassInput.isEnabled = false
+        } else {
+            credentialsProgressContainer.visibility = View.GONE
+            updateCredentialsButton.isEnabled = true
+            updateCredentialsButton.text = "Save Credentials"
+            adminUserInput.isEnabled = true
+            adminPassInput.isEnabled = true
         }
     }
 

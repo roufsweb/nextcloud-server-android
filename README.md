@@ -25,6 +25,18 @@ Pre-built packages are available in the [`releases/`](releases/) directory and o
 
 ---
 
+## Default Administrator Credentials
+
+Upon first installation, the server automatically pre-configures a default administrator account:
+
+* **Username**: `admin`
+* **Password**: `NextcloudAdmin123!`
+
+> [!TIP]
+> You can customize your administrator username and password at any time in the app under the **Settings & System** tab. Nextcloud requires passwords to be at least 8 characters long.
+
+---
+
 ## Interface
 
 | Dashboard | Storage Management |

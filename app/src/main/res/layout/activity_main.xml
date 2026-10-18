@@ -1109,10 +1109,12 @@
                         </LinearLayout>
 
                         <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/adminUserInputLayout"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:hint="Username"
                             android:layout_marginBottom="12dp"
+                            app:errorEnabled="true"
                             style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
                             <com.google.android.material.textfield.TextInputEditText
@@ -1124,11 +1126,13 @@
                         </com.google.android.material.textfield.TextInputLayout>
 
                         <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/adminPassInputLayout"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:hint="Password"
+                            android:hint="Password (min 8 characters)"
                             app:passwordToggleEnabled="true"
-                            android:layout_marginBottom="14dp"
+                            app:errorEnabled="true"
+                            android:layout_marginBottom="8dp"
                             style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
                             <com.google.android.material.textfield.TextInputEditText
@@ -1148,6 +1152,50 @@
                             android:textStyle="bold"
                             app:cornerRadius="24dp"
                             style="@style/Widget.Material3.Button.TonalButton" />
+
+                        <!-- Credentials Progress Indicator -->
+                        <LinearLayout
+                            android:id="@+id/credentialsProgressContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:layout_marginTop="12dp"
+                            android:visibility="gone">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical"
+                                android:layout_marginBottom="6dp">
+
+                                <TextView
+                                    android:id="@+id/credentialsProgressStatusText"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:text="Updating credentials in Nextcloud..."
+                                    android:textSize="12sp"
+                                    android:textColor="@color/m3_primary"
+                                    android:fontFamily="sans-serif-medium" />
+
+                                <ProgressBar
+                                    android:layout_width="16dp"
+                                    android:layout_height="16dp"
+                                    android:indeterminate="true"
+                                    style="?android:attr/progressBarStyleSmall" />
+                            </LinearLayout>
+
+                            <com.google.android.material.progressindicator.LinearProgressIndicator
+                                android:id="@+id/credentialsProgressBar"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:indeterminate="true"
+                                app:trackThickness="4dp"
+                                app:trackCornerRadius="2dp"
+                                app:indicatorColor="@color/m3_primary"
+                                app:trackColor="@color/m3_surface_container_highest" />
+                        </LinearLayout>
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
