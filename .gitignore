@@ -2,9 +2,11 @@
 *.deb
 *.tar.gz
 *.tar.xz
+*.apk
 assets_tmp/
 .gradle/
 build/
 local.properties
 .idea/
 *.html
+.agents/

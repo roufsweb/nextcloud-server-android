@@ -1,17 +1,35 @@
 memory_limit=512M
-upload_max_filesize=512M
-post_max_size=512M
-max_execution_time=300
+upload_max_filesize=1024M
+post_max_size=1024M
+max_execution_time=3600
+max_input_time=3600
+max_file_uploads=100
 date.timezone=UTC
+output_buffering=0
+sys_temp_dir={{FILES_DIR}}/tmp
+upload_tmp_dir={{FILES_DIR}}/tmp
+session.save_path={{FILES_DIR}}/tmp
+
+[curl]
+curl.cainfo={{FILES_DIR}}/conf/cacert.pem
 
 [opcache]
 opcache.enable=1
 opcache.enable_cli=1
 opcache.memory_consumption=128
-opcache.interned_strings_buffer=8
+opcache.interned_strings_buffer=32
 opcache.max_accelerated_files=10000
 opcache.revalidate_freq=1
 opcache.save_comments=1
+opcache.lockfile_path={{FILES_DIR}}/tmp
 
 [sqlite3]
 sqlite3.extension_dir = {{FILES_DIR}}/lib
+
+extension_dir = {{FILES_DIR}}/lib
+extension = gd.so
+extension = sodium.so
+
+[openssl]
+openssl.openssl_conf = {{FILES_DIR}}/conf/openssl.cnf
+openssl.cafile={{FILES_DIR}}/conf/cacert.pem

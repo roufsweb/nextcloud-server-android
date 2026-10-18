@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="24dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="24dp"
+    android:background="@color/m3_surface_container_lowest">
+
+    <!-- Bottom Sheet Drag Handle -->
+    <View
+        android:layout_width="32dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="18dp"
+        android:background="@drawable/dialog_drag_handle" />
+
+    <!-- Header Row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/safDialogIcon"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_sd_storage"
+            app:tint="@color/m3_primary" />
+
+        <TextView
+            android:id="@+id/safDialogTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:layout_weight="1"
+            android:text="Enable Full Storage Access"
+            android:textColor="@color/m3_on_surface"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Drive Info Card -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:background="@drawable/bg_stat_tile"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <TextView
+            android:id="@+id/safDialogDriveInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:text="SD Card • 14.6 GB (13.9 GB free)\nFormat: FAT32 • Path: /storage/DCBC-EC41"
+            android:textColor="@color/m3_primary"
+            android:textSize="12.5sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Explanation Message -->
+    <TextView
+        android:id="@+id/safDialogMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:lineSpacingExtra="3dp"
+        android:text="Android protects the root of external storage media from direct app modification. To allow Nextcloud to upload and organize files directly into the root and any subfolder on this drive, tap 'Grant Access' below.\n\nIn the system file picker that appears, simply tap 'USE THIS FOLDER' or 'ALLOW' at the bottom.\n\nThis is a one-time setup that persists permanently across reboots."
+        android:textColor="@color/m3_on_surface_variant"
+        android:textSize="13sp" />
+
+    <!-- Action Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/safSkipButton"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:text="Skip (Browse Only)"
+            android:textColor="@color/m3_on_surface_variant" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/safGrantButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:backgroundTint="@color/m3_primary"
+            android:text="Grant Access"
+            android:textColor="@color/m3_on_primary"
+            app:cornerRadius="20dp"
+            app:icon="@drawable/ic_check"
+            app:iconTint="@color/m3_on_primary" />
+    </LinearLayout>
+
+</LinearLayout>

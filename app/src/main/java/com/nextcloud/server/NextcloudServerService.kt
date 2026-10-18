@@ -1,0 +1,574 @@
+package com.nextcloud.server
+
+import android.app.*
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.*
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import java.io.*
+import java.util.concurrent.Executors
+
+class NextcloudServerService : Service() {
+
+    private val CHANNEL_ID = "NextcloudServerChannel"
+    private var phpProcess: java.lang.Process? = null
+    private var nginxProcess: java.lang.Process? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    private val executor = Executors.newCachedThreadPool()
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        val prefs = getSharedPreferences("NextcloudPrefs", android.content.Context.MODE_PRIVATE)
+        if (prefs.getBoolean("wake_lock_enabled", true)) {
+            setWakeLockEnabled(true)
+        }
+    }
+
+    companion object {
+        const val ACTION_START = "com.nextcloud.server.START"
+        const val ACTION_MIGRATE_STORAGE = "com.nextcloud.server.MIGRATE_STORAGE"
+        const val ACTION_MIGRATION_PROGRESS = "com.nextcloud.server.MIGRATION_PROGRESS"
+        const val ACTION_CHANGE_PORT = "com.nextcloud.server.CHANGE_PORT"
+        const val ACTION_PORT_PROGRESS = "com.nextcloud.server.PORT_PROGRESS"
+        const val ACTION_TOGGLE_WAKELOCK = "com.nextcloud.server.TOGGLE_WAKELOCK"
+        const val ACTION_SAF_GRANTED = "com.nextcloud.server.SAF_GRANTED"
+        @Volatile var isServerRunning = false
+        @Volatile var lastStatus = "Stopped"
+        @Volatile var isMigrationRunning = false
+        @Volatile var lastMigrationStage = ""
+        @Volatile var lastMigrationPercent = 0
+        @Volatile var isPortChangeRunning = false
+        @Volatile var lastPortChangeStatus = ""
+        @Volatile var lastPortChangePercent = 0
+    }
+
+    private var storageMountManager: StorageMountManager? = null
+    private var safManager: SdCardSafManager? = null
+    private var uploadRelayService: UploadRelayService? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+        if (action == "STOP") {
+            stopServer()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        if (action == ACTION_SAF_GRANTED) {
+            val uuid = intent.getStringExtra("uuid")
+            if (uuid != null) {
+                uploadRelayService?.startWatching(listOf(uuid))
+                Log.i("NextcloudServer", "SAF permission granted for $uuid; UploadRelayService watching started")
+            }
+            return START_STICKY
+        }
+
+        if (action == ACTION_TOGGLE_WAKELOCK) {
+            val enabled = intent.getBooleanExtra("enabled", true)
+            setWakeLockEnabled(enabled)
+            return START_STICKY
+        }
+
+        if (action == ACTION_CHANGE_PORT) {
+            val newPort = intent.getIntExtra("port", 8000)
+            ensureForeground("Changing server port to $newPort...")
+            executor.execute {
+                performPortChange(newPort)
+            }
+            return START_STICKY
+        }
+
+        if (action == ACTION_MIGRATE_STORAGE) {
+            val oldPath = intent.getStringExtra("old_path") ?: ""
+            val newPath = intent.getStringExtra("new_path") ?: ""
+            val copyData = intent.getBooleanExtra("copy_data", true)
+
+            ensureForeground("Starting storage setup...")
+            executor.execute {
+                performStorageMigration(oldPath, newPath, copyData)
+            }
+            return START_STICKY
+        }
+
+        val savedPort = getSharedPreferences("NextcloudPrefs", android.content.Context.MODE_PRIVATE).getInt("server_port", 8000)
+        val port = intent?.getIntExtra("port", savedPort) ?: savedPort
+
+        ensureForeground("Starting server...")
+        
+        executor.execute {
+            try {
+                prepareBinaries(port)
+                startPhpFpm()
+                startNginx()
+
+                // Initialize SAF & upload relay service
+                safManager = SdCardSafManager(this@NextcloudServerService)
+                uploadRelayService = UploadRelayService(
+                    this@NextcloudServerService,
+                    safManager!!,
+                    NextcloudManager(this@NextcloudServerService)
+                )
+
+                // Initialize hot-plug external storage manager
+                storageMountManager = StorageMountManager(this@NextcloudServerService).apply {
+                    startMonitoring()
+                }
+
+                // Start active relay watchers for all storages with granted SAF permissions
+                val grantedUuids = safManager?.getAllGrantedStorageUuids() ?: emptyList()
+                if (grantedUuids.isNotEmpty()) {
+                    uploadRelayService?.startWatching(grantedUuids)
+                }
+
+                val wifiIp = NextcloudManager(this@NextcloudServerService).getWifiIpAddress()
+                val ipDisplay = if (wifiIp != null) "http://$wifiIp:$port" else "http://localhost:$port"
+                updateStatus("Nextcloud is running at $ipDisplay")
+            } catch (e: Exception) {
+                Log.e("NextcloudServer", "Error starting server", e)
+                updateStatus("Error starting server: ${e.message}")
+            }
+        }
+
+        return START_STICKY
+    }
+
+    private fun prepareBinaries(port: Int) {
+        val filesDir = filesDir.absolutePath
+        val binDir = File(filesDir, "bin")
+        val confDir = File(filesDir, "conf")
+        val logsDir = File(filesDir, "logs")
+        val runDir = File(filesDir, "run")
+        val libDir = File(filesDir, "lib")
+        val nextcloudDir = File(filesDir, "nextcloud")
+
+        val tmpDir = File(filesDir, "tmp")
+
+        if (!binDir.exists()) binDir.mkdirs()
+        if (!confDir.exists()) confDir.mkdirs()
+        if (!logsDir.exists()) logsDir.mkdirs()
+        if (!runDir.exists()) runDir.mkdirs()
+        if (!libDir.exists()) libDir.mkdirs()
+        if (!tmpDir.exists()) tmpDir.mkdirs()
+        try {
+            tmpDir.setReadable(true, false)
+            tmpDir.setWritable(true, false)
+            tmpDir.setExecutable(true, false)
+        } catch (_: Exception) {}
+
+        // Copy binaries from assets
+        AssetHelper.copyAssetFolder(this, "bin", binDir.absolutePath)
+        
+        // Make everything in bin executable
+        binDir.listFiles()?.forEach { file ->
+            AssetHelper.makeExecutable(file.absolutePath)
+        }
+
+        // Copy and process configs
+        processConfig("nginx.conf.template", File(confDir, "nginx.conf"), port)
+        processConfig("php-fpm.conf.template", File(confDir, "php-fpm.conf"), port)
+        processConfig("php.ini.template", File(confDir, "php.ini"), port)
+        AssetHelper.copyAssetFolder(this, "conf", confDir.absolutePath) // For mime.types
+        AssetHelper.copyAssetFolder(this, "lib", libDir.absolutePath)
+
+        // Auto-install Nextcloud if not already installed
+        val nextcloudManager = NextcloudManager(this)
+        if (!nextcloudManager.isInstalled()) {
+            val prefs = getSharedPreferences("NextcloudPrefs", MODE_PRIVATE)
+            val adminUser = prefs.getString("admin_user", "admin") ?: "admin"
+            val adminPass = prefs.getString("admin_pass", "NextcloudAdmin123!") ?: "NextcloudAdmin123!"
+            val dataDir = prefs.getString("data_dir", File(nextcloudDir, "data").absolutePath)
+                ?: File(nextcloudDir, "data").absolutePath
+
+            updateStatus("Pre-installing Nextcloud server...")
+            nextcloudManager.autoInstall(adminUser, adminPass, dataDir) { stage ->
+                updateStatus(stage)
+            }
+        } else {
+            // Ensure current Wi-Fi LAN IP is in trusted domains
+            nextcloudManager.getWifiIpAddress()?.let { ip ->
+                nextcloudManager.addTrustedDomain(ip)
+            }
+            nextcloudManager.ensureAppStoreAndAppsConfig()
+            nextcloudManager.ensureCoreAppsEnabled()
+            try {
+                nextcloudManager.executeOcc("config:system:set", "check_data_directory_permissions", "--value=false", "--type=boolean")
+                nextcloudManager.executeOcc("config:system:set", "tempdirectory", "--value=" + tmpDir.absolutePath)
+            } catch (e: Exception) {
+                Log.w("NextcloudServer", "Error setting tempdirectory in config: ${e.message}")
+            }
+        }
+    }
+
+    private fun processConfig(assetName: String, targetFile: File, port: Int) {
+        val template = assets.open(assetName).bufferedReader().readText()
+        val processed = template.replace("{{FILES_DIR}}", filesDir.absolutePath)
+            .replace("{{USER}}", "shell") // Default for Android
+            .replace("{{GROUP}}", "shell")
+            .replace("{{PORT}}", port.toString())
+        targetFile.writeText(processed)
+    }
+
+    private fun startPhpFpm() {
+        val binDir = File(filesDir, "bin")
+        var phpBin = File(binDir, "php-fpm")
+        if (!phpBin.exists()) {
+            phpBin = File(binDir, "php")
+        }
+        
+        if (!phpBin.exists()) {
+            throw IOException("PHP binary not found in ${binDir.absolutePath}")
+        }
+
+        val phpConf = File(filesDir, "conf/php-fpm.conf").absolutePath
+        val phpIni = File(filesDir, "conf/php.ini").absolutePath
+        val pb = ProcessBuilder(phpBin.absolutePath, "-p", filesDir.absolutePath, "-y", phpConf, "-c", phpIni, "-F")
+        pb.directory(filesDir)
+        pb.redirectErrorStream(true)
+        
+        val env = pb.environment()
+        val libDir = File(filesDir, "lib").absolutePath
+        val binDirForLibs = File(filesDir, "bin").absolutePath
+        val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
+        val opensslCnf = File(filesDir, "conf/openssl.cnf")
+        if (opensslCnf.exists()) {
+            env["OPENSSL_CONF"] = opensslCnf.absolutePath
+        }
+        env["TMPDIR"] = tmpDir.absolutePath
+        env["LD_LIBRARY_PATH"] = "$libDir:$binDirForLibs" + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+        
+        phpProcess = pb.start()
+        
+        executor.execute {
+            try {
+                phpProcess?.inputStream?.bufferedReader()?.forEachLine { line ->
+                    Log.d("PHP-FPM", line)
+                }
+            } catch (e: Exception) {
+                Log.d("PHP-FPM", "Stream closed: ${e.message}")
+            }
+        }
+    }
+
+    private fun startNginx() {
+        val nginxBin = File(filesDir, "bin/nginx").absolutePath
+        val nginxConf = File(filesDir, "conf/nginx.conf").absolutePath
+        val nginxErrorLog = File(filesDir, "logs/nginx_error.log").absolutePath
+        val pb = ProcessBuilder(nginxBin, "-p", filesDir.absolutePath, "-c", nginxConf, "-e", nginxErrorLog, "-g", "daemon off;")
+        pb.directory(filesDir)
+        pb.redirectErrorStream(true)
+        
+        // Set LD_LIBRARY_PATH
+        val env = pb.environment()
+        val libDir = File(filesDir, "lib").absolutePath
+        val binDirForLibs = File(filesDir, "bin").absolutePath
+        env["LD_LIBRARY_PATH"] = "$libDir:$binDirForLibs" + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+
+        nginxProcess = pb.start()
+
+        executor.execute {
+            try {
+                nginxProcess?.inputStream?.bufferedReader()?.forEachLine { line ->
+                    Log.d("Nginx", line)
+                }
+            } catch (e: Exception) {
+                Log.d("Nginx", "Stream closed: ${e.message}")
+            }
+        }
+    }
+
+    private fun stopServer() {
+        uploadRelayService?.stopWatching()
+        uploadRelayService = null
+        safManager = null
+        storageMountManager?.stopMonitoring()
+        storageMountManager = null
+        phpProcess?.destroy()
+        stopNginxProcess()
+        phpProcess = null
+        nginxProcess = null
+        isServerRunning = false
+        lastStatus = "Stopped"
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        } catch (e: Exception) {
+            Log.e("NextcloudServer", "Error releasing wake lock", e)
+        }
+    }
+
+    private fun setWakeLockEnabled(enabled: Boolean) {
+        try {
+            if (enabled) {
+                if (wakeLock == null) {
+                    val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as PowerManager
+                    wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NextcloudServer::WakeLock")
+                }
+                if (wakeLock?.isHeld != true) {
+                    wakeLock?.acquire(24 * 60 * 60 * 1000L /* 24 hours */)
+                    Log.i("NextcloudServer", "Wake lock acquired dynamically")
+                }
+            } else {
+                if (wakeLock?.isHeld == true) {
+                    wakeLock?.release()
+                    Log.i("NextcloudServer", "Wake lock released dynamically")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("NextcloudServer", "Error toggling wake lock (enabled=$enabled)", e)
+        }
+    }
+
+    override fun onDestroy() {
+        stopServer()
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val serviceChannel = NotificationChannel(
+                CHANNEL_ID,
+                "Nextcloud Server Service Channel",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(serviceChannel)
+        }
+    }
+
+    private fun createNotification(content: String): Notification {
+        val stopIntent = Intent(this, NextcloudServerService::class.java).apply {
+            action = "STOP"
+        }
+        val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE)
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Nextcloud Server")
+            .setContentText(content)
+            .setSmallIcon(R.drawable.ic_nextcloud_logo)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
+            .build()
+    }
+
+    private fun updateStatus(content: String) {
+        lastStatus = content
+        isServerRunning = content.contains("running", ignoreCase = true) || content.contains("http://", ignoreCase = true)
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(1, createNotification(content))
+        
+        // Send broadcast to Activity
+        val intent = Intent("com.nextcloud.server.STATUS_UPDATE")
+        intent.putExtra("status", content)
+        sendBroadcast(intent)
+    }
+
+    private fun ensureForeground(notificationText: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1, createNotification(notificationText), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(1, createNotification(notificationText))
+        }
+    }
+
+    private fun performStorageMigration(oldPath: String, newPath: String, copyData: Boolean) {
+        isMigrationRunning = true
+        lastMigrationStage = if (copyData) "Starting migration..." else "Configuring new storage..."
+        lastMigrationPercent = 0
+
+        val nextcloudManager = NextcloudManager(this)
+        val isServerUp = phpProcess != null && nginxProcess != null
+
+        // 1. Put Nextcloud into maintenance mode if server is running
+        if (isServerUp) {
+            nextcloudManager.setMaintenanceMode(true)
+        }
+
+        updateMigrationNotification(lastMigrationStage, 0)
+        broadcastMigrationProgress(isMigrationRunning, lastMigrationStage, 0, newPath, false)
+
+        val success = nextcloudManager.migrateDataDirectory(oldPath, newPath, copyData) { stage, percent ->
+            lastMigrationStage = stage
+            lastMigrationPercent = percent
+            updateMigrationNotification(stage, percent)
+            broadcastMigrationProgress(true, stage, percent, newPath, false)
+        }
+
+        // 2. Persist new storage location in prefs
+        if (success) {
+            getSharedPreferences("NextcloudPrefs", MODE_PRIVATE).edit()
+                .putString("data_dir", newPath)
+                .apply()
+        }
+
+        isMigrationRunning = false
+        lastMigrationStage = if (success) "Storage configuration completed!" else "Storage configuration failed"
+        lastMigrationPercent = if (success) 100 else 0
+
+        broadcastMigrationProgress(false, lastMigrationStage, lastMigrationPercent, newPath, success)
+
+        // 3. Restore normal server notification
+        if (isServerUp) {
+            try {
+                phpProcess?.destroy()
+                startPhpFpm()
+            } catch (e: Exception) {
+                Log.e("NextcloudServer", "Error restarting PHP-FPM after migration", e)
+            }
+            val port = getSharedPreferences("NextcloudPrefs", MODE_PRIVATE).getInt("server_port", 8000)
+            val wifiIp = nextcloudManager.getWifiIpAddress()
+            val ipDisplay = if (wifiIp != null) "http://$wifiIp:$port" else "http://localhost:$port"
+            updateStatus("Nextcloud is running at $ipDisplay")
+        } else {
+            updateStatus("Server is stopped. Storage updated to $newPath")
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!isMigrationRunning && phpProcess == null && nginxProcess == null) {
+                    stopForeground(true)
+                    stopSelf()
+                }
+            }, 3000)
+        }
+    }
+
+    private fun updateMigrationNotification(stage: String, percent: Int) {
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Nextcloud Storage Setup")
+            .setContentText(stage)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setProgress(100, percent, percent == 0)
+            .setOngoing(true)
+            .build()
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(1, notification)
+    }
+
+    private fun broadcastMigrationProgress(
+        isRunning: Boolean,
+        stage: String,
+        percent: Int,
+        newPath: String,
+        success: Boolean
+    ) {
+        val intent = Intent(ACTION_MIGRATION_PROGRESS).apply {
+            putExtra("is_running", isRunning)
+            putExtra("stage", stage)
+            putExtra("percent", percent)
+            putExtra("new_path", newPath)
+            putExtra("success", success)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun performPortChange(newPort: Int) {
+        isPortChangeRunning = true
+        lastPortChangePercent = 25
+        lastPortChangeStatus = "Reconfiguring web server for port $newPort..."
+        updatePortProgressNotification(lastPortChangeStatus, 25)
+        broadcastPortProgress(true, lastPortChangeStatus, 25, newPort, false)
+
+        try {
+            val confDir = File(filesDir, "conf")
+            processConfig("nginx.conf.template", File(confDir, "nginx.conf"), newPort)
+
+            lastPortChangePercent = 60
+            lastPortChangeStatus = "Restarting web server on port $newPort..."
+            updatePortProgressNotification(lastPortChangeStatus, 60)
+            broadcastPortProgress(true, lastPortChangeStatus, 60, newPort, false)
+
+            stopNginxProcess()
+            Thread.sleep(500)
+
+            lastPortChangePercent = 85
+            lastPortChangeStatus = "Starting web server on port $newPort..."
+            updatePortProgressNotification(lastPortChangeStatus, 85)
+            broadcastPortProgress(true, lastPortChangeStatus, 85, newPort, false)
+
+            startNginx()
+            Thread.sleep(600)
+
+            // Update SharedPreferences with the newly applied port
+            getSharedPreferences("NextcloudPrefs", MODE_PRIVATE)
+                .edit()
+                .putInt("server_port", newPort)
+                .apply()
+
+            val ncManager = NextcloudManager(this@NextcloudServerService)
+            ncManager.ensureAppStoreAndAppsConfig()
+            try {
+                ncManager.executeOcc("config:system:set", "overwrite.cli.url", "--value=http://localhost:$newPort")
+            } catch (e: Exception) {
+                Log.w("NextcloudServer", "Could not update overwrite.cli.url via occ: ${e.message}")
+            }
+
+            val wifiIp = ncManager.getWifiIpAddress()
+            val ipDisplay = if (wifiIp != null) "http://$wifiIp:$newPort" else "http://localhost:$newPort"
+
+            lastPortChangePercent = 100
+            lastPortChangeStatus = "Online on port $newPort"
+            broadcastPortProgress(false, "Server is running on port $newPort", 100, newPort, true)
+            updateStatus("Nextcloud is running at $ipDisplay")
+        } catch (e: Exception) {
+            Log.e("NextcloudServer", "Error changing port to $newPort", e)
+            val err = "Failed to switch port: ${e.message}"
+            lastPortChangeStatus = err
+            broadcastPortProgress(false, err, 0, newPort, false)
+            updateStatus("Error changing port: ${e.message}")
+        } finally {
+            isPortChangeRunning = false
+        }
+    }
+
+    private fun stopNginxProcess() {
+        try {
+            val pidFile = File(filesDir, "run/nginx.pid")
+            if (pidFile.exists()) {
+                val pid = pidFile.readText().trim()
+                if (pid.isNotEmpty()) {
+                    try {
+                        Runtime.getRuntime().exec(arrayOf("kill", "-TERM", pid)).waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
+                    } catch (e: Exception) {
+                        Log.w("NextcloudServer", "kill -TERM failed", e)
+                    }
+                }
+            }
+            nginxProcess?.destroy()
+            nginxProcess?.waitFor(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (e: Exception) {
+            Log.w("NextcloudServer", "Error terminating nginx", e)
+        }
+        nginxProcess = null
+    }
+
+    private fun updatePortProgressNotification(stage: String, percent: Int) {
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Nextcloud Server")
+            .setContentText(stage)
+            .setSmallIcon(R.drawable.ic_nextcloud_logo)
+            .setProgress(100, percent, false)
+            .setOngoing(true)
+            .build()
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(1, notification)
+    }
+
+    private fun broadcastPortProgress(
+        isRunning: Boolean,
+        status: String,
+        percent: Int,
+        newPort: Int,
+        success: Boolean
+    ) {
+        val intent = Intent(ACTION_PORT_PROGRESS).apply {
+            putExtra("is_running", isRunning)
+            putExtra("status", status)
+            putExtra("percent", percent)
+            putExtra("port", newPort)
+            putExtra("success", success)
+        }
+        sendBroadcast(intent)
+    }
+}
+

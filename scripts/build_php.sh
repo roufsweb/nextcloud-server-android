@@ -18,7 +18,7 @@ export STRIP=$TOOLCHAIN/bin/llvm-strip
 
 ./configure \
   --host=$TARGET \
-  --prefix=/data/data/com.nextcloud.android.server/files \
+  --prefix=/data/data/com.nextcloud.server/files \
   --enable-fpm \
   --with-fpm-user=shell \
   --with-fpm-group=shell \

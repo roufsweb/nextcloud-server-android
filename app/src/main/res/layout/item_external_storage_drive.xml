@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingVertical="8dp">
+
+    <!-- Top Row: Icon, Title & Subtitle, and Enable Switch -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- Drive Icon -->
+        <ImageView
+            android:id="@+id/driveIcon"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:src="@drawable/ic_sd_storage"
+            app:tint="@color/m3_primary" />
+
+        <!-- Title & Subtitle -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="10dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/driveTitleText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="SD Card"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:textColor="@color/m3_on_surface" />
+
+            <TextView
+                android:id="@+id/driveSubtitleText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Removable storage"
+                android:textSize="12sp"
+                android:textColor="@color/m3_on_surface_variant"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
+        <!-- Toggle Switch -->
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/driveToggleSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true" />
+    </LinearLayout>
+
+    <!-- Full Path Pill Container (Identical to Internal Storage) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/pill_bg"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/drivePathText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="/storage/DCBC-EC41"
+            android:textSize="11.5sp"
+            android:fontFamily="monospace"
+            android:textColor="@color/m3_on_surface_variant"
+            android:singleLine="true"
+            android:ellipsize="middle" />
+    </LinearLayout>
+
+    <!-- Storage Meter (Google Files-style, Identical to Internal Storage) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:id="@+id/driveStorageUsedTotalText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="0.7 GB of 14.6 GB used"
+            android:textSize="12.5sp"
+            android:textColor="@color/m3_on_surface"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/driveStorageFreeText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="13.9 GB free"
+            android:textSize="12.5sp"
+            android:textColor="@color/m3_on_surface_variant" />
+    </LinearLayout>
+
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/driveStorageProgressBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:progress="5"
+        app:trackThickness="8dp"
+        app:trackCornerRadius="4dp"
+        app:indicatorColor="@color/m3_primary"
+        app:trackColor="@color/m3_surface_container_highest" />
+
+</LinearLayout>

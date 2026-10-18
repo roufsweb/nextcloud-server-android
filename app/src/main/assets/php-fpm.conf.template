@@ -3,15 +3,24 @@ error_log = {{FILES_DIR}}/logs/php-fpm.log
 pid = {{FILES_DIR}}/run/php-fpm.pid
 
 [www]
-user = {{USER}}
-group = {{GROUP}}
+; user and group are commented out so PHP-FPM runs natively under the app sandbox UID without root
+; user = {{USER}}
+; group = {{GROUP}}
 listen = 127.0.0.1:9000
-pm = static
-pm.max_children = 2
-pm.start_servers = 1
+pm = dynamic
+pm.max_children = 8
+pm.start_servers = 2
 pm.min_spare_servers = 1
-pm.max_spare_servers = 1
+pm.max_spare_servers = 3
+pm.max_requests = 500
+request_terminate_timeout = 3600
 chdir = {{FILES_DIR}}/nextcloud
 php_admin_value[error_log] = {{FILES_DIR}}/logs/php_error.log
 php_admin_flag[log_errors] = on
 catch_workers_output = yes
+clear_env = no
+env[PATH] = /system/bin:/system/xbin:{{FILES_DIR}}/bin
+env[TMP] = {{FILES_DIR}}/tmp
+env[TMPDIR] = {{FILES_DIR}}/tmp
+env[TEMP] = {{FILES_DIR}}/tmp
+env[LD_LIBRARY_PATH] = {{FILES_DIR}}/lib:{{FILES_DIR}}/bin

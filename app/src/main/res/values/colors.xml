@@ -1,0 +1,61 @@
+<resources>
+    <!-- Brand Colors -->
+    <color name="nextcloud_blue">#0082c9</color>
+    <color name="nextcloud_blue_dark">#005b8e</color>
+    <color name="nextcloud_blue_light">#40a7df</color>
+
+    <!-- Google Material 3 Expressive Tonal Surfaces -->
+    <color name="m3_surface">#F8FAFD</color>
+    <color name="m3_surface_container_lowest">#FFFFFF</color>
+    <color name="m3_surface_container_low">#F2F5FA</color>
+    <color name="m3_surface_container">#EBF0F7</color>
+    <color name="m3_surface_container_high">#E3EBF4</color>
+    <color name="m3_surface_container_highest">#DBE4EF</color>
+
+    <!-- M3 Roles -->
+    <color name="m3_primary">#00639B</color>
+    <color name="m3_on_primary">#FFFFFF</color>
+    <color name="m3_primary_container">#CCE5FF</color>
+    <color name="m3_on_primary_container">#001D32</color>
+
+    <color name="m3_secondary">#51606F</color>
+    <color name="m3_on_secondary">#FFFFFF</color>
+    <color name="m3_secondary_container">#D5E4F6</color>
+    <color name="m3_on_secondary_container">#0E1D2A</color>
+
+    <color name="m3_tertiary">#006A60</color>
+    <color name="m3_on_tertiary">#FFFFFF</color>
+    <color name="m3_tertiary_container">#70F7E6</color>
+    <color name="m3_on_tertiary_container">#00201C</color>
+
+    <color name="m3_on_surface">#181C20</color>
+    <color name="m3_on_surface_variant">#41474D</color>
+    <color name="m3_outline">#72787E</color>
+    <color name="m3_outline_variant">#E0E5EB</color>
+
+    <!-- Google Tonal Containers -->
+    <color name="m3_success">#146C2E</color>
+    <color name="m3_success_container">#C4EED0</color>
+    <color name="m3_on_success_container">#002107</color>
+
+    <color name="m3_danger">#BA1A1A</color>
+    <color name="m3_danger_container">#FFDAD6</color>
+    <color name="m3_on_danger_container">#410002</color>
+
+
+    <!-- Backward-compatible Aliases -->
+    <color name="background_light">#F8FAFD</color>
+    <color name="text_dark">#181C20</color>
+    <color name="text_grey">#72787E</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="status_green">#146C2E</color>
+    <color name="status_green_bg">#C4EED0</color>
+    <color name="status_red">#BA1A1A</color>
+    <color name="status_red_bg">#FFDAD6</color>
+    <color name="status_orange">#F39C12</color>
+    <color name="status_orange_bg">#FEF3C7</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="card_stroke">#E0E5EB</color>
+    <color name="status_stopped_bg">#DBE4EF</color>
+</resources>

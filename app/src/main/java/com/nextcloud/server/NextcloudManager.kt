@@ -1,0 +1,706 @@
+package com.nextcloud.server
+
+import android.content.Context
+import android.net.wifi.WifiManager
+import android.os.Environment
+import android.text.format.Formatter
+import android.util.Log
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.net.Inet4Address
+import java.net.NetworkInterface
+
+/**
+ * High-level manager for Nextcloud Server operations:
+ * - Automated pre-installation on first launch
+ * - Administrator credential management
+ * - Trusted domains management
+ * - Root data storage directory switching with safe atomic data migration
+ * - Maintenance mode control
+ * - OCC CLI process execution
+ */
+class NextcloudManager(private val context: Context) {
+
+    companion object {
+        private const val TAG = "NextcloudManager"
+    }
+
+    private val filesDir: File = context.filesDir
+    private val nextcloudDir: File = File(filesDir, "nextcloud")
+    private val configPhp: File = File(nextcloudDir, "config/config.php")
+
+    fun isInstalled(): Boolean {
+        if (!configPhp.exists()) return false
+        val output = executeOcc("status")
+        return output.contains("installed: true", ignoreCase = true)
+    }
+
+    /**
+     * Automatically pre-installs Nextcloud on first boot so the user never sees
+     * a setup wizard in the browser.
+     */
+    fun autoInstall(
+        adminUser: String,
+        adminPass: String,
+        dataDir: String,
+        onProgress: ((String) -> Unit)? = null
+    ): Boolean {
+        onProgress?.invoke("Extracting Nextcloud core...")
+        if (!nextcloudDir.exists()) {
+            AssetHelper.unzipAsset(context, "nextcloud.zip", filesDir.absolutePath)
+        }
+
+        val targetDataDir = File(dataDir)
+        if (!targetDataDir.exists()) {
+            targetDataDir.mkdirs()
+        }
+
+        // Create standard verification markers
+        ensureNcMarkers(targetDataDir)
+
+        onProgress?.invoke("Pre-installing Nextcloud SQLite database...")
+        val output = executeOcc(
+            "maintenance:install",
+            "--database=sqlite",
+            "--database-name=nextcloud",
+            "--admin-user=$adminUser",
+            "--admin-pass=$adminPass",
+            "--data-dir=$dataDir"
+        )
+        
+        Log.i(TAG, "Install output: $output")
+        val success = output.contains("Nextcloud was successfully installed", ignoreCase = true) || isInstalled()
+
+        if (success) {
+            onProgress?.invoke("Configuring network & trusted domains...")
+            // Automatically add localhost, 127.0.0.1, and current Wi-Fi LAN IP
+            addTrustedDomain("localhost")
+            addTrustedDomain("127.0.0.1")
+            getWifiIpAddress()?.let { ip ->
+                addTrustedDomain(ip)
+            }
+            ensureAppStoreAndAppsConfig()
+            ensureCoreAppsEnabled()
+            executeOcc("config:system:set", "check_data_directory_permissions", "--value=false", "--type=boolean")
+            executeOcc("config:system:set", "allow_local_remote_servers", "--value=true", "--type=boolean")
+            executeOcc("config:system:set", "tempdirectory", "--value=" + File(filesDir, "tmp").apply { mkdirs() }.absolutePath)
+            executeOcc("config:system:set", "appstoreenabled", "--value=true", "--type=boolean")
+            executeOcc("config:system:set", "default_phone_region", "--value=US")
+            val currentPort = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE).getInt("server_port", 8000)
+            executeOcc("config:system:set", "overwrite.cli.url", "--value=http://localhost:$currentPort")
+        }
+
+        return success
+    }
+
+    /**
+     * Automatically ensures all pre-bundled productivity apps (files_external,
+     * calendar, contacts, notes, deck) are enabled out-of-the-box.
+     */
+    fun ensureCoreAppsEnabled() {
+        val coreApps = listOf("files_external", "calendar", "contacts", "notes", "deck")
+        for (app in coreApps) {
+            val appInApps = File(File(nextcloudDir, "apps"), app).exists()
+            val appInCustom = File(File(nextcloudDir, "custom_apps"), app).exists()
+            if (appInApps || appInCustom) {
+                try {
+                    val out = executeOcc("app:enable", app)
+                    Log.d(TAG, "Ensure app $app enabled: $out")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not enable core app $app", e)
+                }
+            }
+        }
+        ensureQrLoginCompatibility()
+    }
+
+    /**
+     * Ensures mobile app QR login compatibility by setting settings:qrcode_onetime to 'no'.
+     * In Nextcloud 30+, qrcode_onetime defaults to true which generates restricted one-time
+     * tokens that immediately invalidate upon connection from apps not implementing the 2026+ flow.
+     * Disabling this flag generates standard permanent app passwords with full permissions
+     * compatible with all official Nextcloud mobile apps (Android and iOS).
+     */
+    fun ensureQrLoginCompatibility() {
+        try {
+            val out = executeOcc("config:app:set", "settings", "qrcode_onetime", "--value=no")
+            Log.d(TAG, "Ensured QR code mobile login compatibility: $out")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set qrcode_onetime to no", e)
+        }
+    }
+
+    /**
+     * Ensures apps.config.php exists with proper apps_paths, appstoreenabled,
+     * allow_local_remote_servers, default_phone_region, overwrite.cli.url,
+     * symlink tolerance for Android, and preview/thumbnail providers.
+     */
+    fun ensureAppStoreAndAppsConfig() {
+        try {
+            val customApps = File(nextcloudDir, "custom_apps")
+            if (!customApps.exists()) {
+                customApps.mkdirs()
+            }
+            val configDir = File(nextcloudDir, "config")
+            if (!configDir.exists()) {
+                configDir.mkdirs()
+            }
+            val appsConfig = File(configDir, "apps.config.php")
+            val currentPort = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE).getInt("server_port", 8000)
+            val content = """<?php
+${'$'}isHttps = (!empty(${'$'}_SERVER['HTTPS']) && ${'$'}_SERVER['HTTPS'] !== 'off')
+    || (!empty(${'$'}_SERVER['HTTP_X_FORWARDED_PROTO']) && ${'$'}_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+${'$'}CONFIG = [
+  'apps_paths' => [
+    0 => [
+      'path' => __DIR__ . '/../apps',
+      'url' => '/apps',
+      'writable' => false,
+    ],
+    1 => [
+      'path' => __DIR__ . '/../custom_apps',
+      'url' => '/custom_apps',
+      'writable' => true,
+    ],
+  ],
+  'appstoreenabled' => true,
+  'allow_local_remote_servers' => true,
+  'check_data_directory_permissions' => false,
+  'tempdirectory' => dirname(__DIR__, 2) . '/tmp',
+  'default_phone_region' => 'US',
+  'overwrite.cli.url' => 'http://localhost:$currentPort',
+  'overwriteprotocol' => ${'$'}isHttps ? 'https' : '',
+  'localstorage.allowsymlinks' => true,
+  'enable_previews' => true,
+  'preview_max_x' => 1024,
+  'preview_max_y' => 1024,
+  'preview_max_scale_factor' => 1,
+  'enabledPreviewProviders' => [
+    'OC\\Preview\\PNG',
+    'OC\\Preview\\JPEG',
+    'OC\\Preview\\GIF',
+    'OC\\Preview\\BMP',
+    'OC\\Preview\\XBitmap',
+    'OC\\Preview\\MarkDown',
+    'OC\\Preview\\MP3',
+    'OC\\Preview\\TXT',
+    'OC\\Preview\\OpenDocument',
+    'OC\\Preview\\Krita',
+  ],
+  'sqlite.journal_mode' => 'WAL',
+  'maintenance_window_start' => 1,
+  'trusted_proxies' => [
+    '127.0.0.1',
+    '::1',
+    '10.0.0.0/8',
+    '172.16.0.0/12',
+    '192.168.0.0/16',
+    'fd00::/8',
+    '173.245.48.0/20',
+    '103.21.244.0/22',
+    '103.22.200.0/22',
+    '103.31.4.0/22',
+    '141.101.64.0/18',
+    '108.162.192.0/18',
+    '190.93.240.0/20',
+    '188.114.96.0/20',
+    '197.234.240.0/22',
+    '198.41.128.0/17',
+    '162.158.0.0/15',
+    '104.16.0.0/13',
+    '104.24.0.0/14',
+    '172.64.0.0/13',
+    '131.0.72.0/22',
+    '2400:cb00::/32',
+    '2606:4700::/32',
+    '2803:f800::/32',
+    '2405:b500::/32',
+    '2405:8100::/32',
+    '2a06:98c0::/29',
+    '2c0f:f248::/32',
+  ],
+  'forwarded_for_headers' => [
+    'HTTP_CF_CONNECTING_IP',
+    'HTTP_X_FORWARDED_FOR',
+  ],
+];
+""".trimIndent()
+            appsConfig.writeText(content)
+            Log.i(TAG, "Ensured apps.config.php and custom_apps directory")
+
+            ensureThemingAndAppstorePatches()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error ensuring apps config", e)
+        }
+    }
+
+    /**
+     * Patches runtime theming and appstore files on Android to resolve:
+     * 1. Missing CSP image domains for App Store thumbnails
+     * 2. Broken local relative screenshot URLs proxied to external usercontent CDN
+     * 3. Theming app icon crashes and fallbacks when ImageMagick is absent
+     */
+    fun ensureThemingAndAppstorePatches() {
+        try {
+            // 1. Patch PageController.php CSP
+            val pageCtrl = File(nextcloudDir, "apps/appstore/lib/Controller/PageController.php")
+            if (pageCtrl.exists()) {
+                var content = pageCtrl.readText()
+                val oldCsp = "\$policy->addAllowedImageDomain('https://usercontent.apps.nextcloud.com');"
+                if (content.contains(oldCsp) && !content.contains("https://apps.nextcloud.com")) {
+                    val newCsp = """$oldCsp
+		${'$'}policy->addAllowedImageDomain('https://apps.nextcloud.com');
+		${'$'}policy->addAllowedImageDomain('https://raw.githubusercontent.com');
+		${'$'}policy->addAllowedImageDomain('https://github.com');
+		${'$'}policy->addAllowedImageDomain('https://avatars.githubusercontent.com');
+		${'$'}policy->addAllowedImageDomain('http:');
+		${'$'}policy->addAllowedImageDomain('https:');
+		${'$'}policy->addAllowedImageDomain('data:');
+		${'$'}policy->addAllowedImageDomain('blob:');"""
+                    content = content.replace(oldCsp, newCsp)
+                    pageCtrl.writeText(content)
+                    Log.i(TAG, "Patched PageController.php CSP for appstore thumbnails")
+                }
+            }
+
+            // 2. Patch ApiController.php screenshot proxying
+            val apiCtrl = File(nextcloudDir, "apps/appstore/lib/Controller/ApiController.php")
+            if (apiCtrl.exists()) {
+                var content = apiCtrl.readText()
+                val oldProxy = "return 'https://usercontent.apps.nextcloud.com/' . base64_encode(\$url);"
+                val newProxy = """if (str_starts_with(${'$'}url, 'https://usercontent.apps.nextcloud.com/')) {
+			return ${'$'}url;
+		}
+		if (!str_starts_with(${'$'}url, 'http://') && !str_starts_with(${'$'}url, 'https://')) {
+			return ${'$'}url;
+		}
+		return 'https://usercontent.apps.nextcloud.com/' . base64_encode(${'$'}url);"""
+                if (content.contains(oldProxy) && !content.contains("str_starts_with(\$url, 'http://')")) {
+                    content = content.replace(oldProxy, newProxy)
+                    apiCtrl.writeText(content)
+                    Log.i(TAG, "Patched ApiController.php proxy url handling")
+                }
+            }
+
+            // 3. Patch IconController.php theming fallback
+            val iconCtrl = File(nextcloudDir, "apps/theming/lib/Controller/IconController.php")
+            if (iconCtrl.exists()) {
+                var content = iconCtrl.readText()
+                if (content.contains("} catch (NotFoundException \$exception) {")) {
+                    val oldCatch = "} catch (NotFoundException \$exception) {"
+                    val newCatch = "} catch (\\Throwable \$exception) {"
+                    content = content.replace(oldCatch, newCatch)
+
+                    val oldSet = "\$iconFileName = \$this->imageManager->setCachedImage('icon-' . \$app . '-' . \$color . str_replace('/', '_', \$image), \$icon);\n\t\t}\n\t\t\$response = new FileDisplayResponse(\$iconFileName, Http::STATUS_OK, ['Content-Type' => 'image/svg+xml']);"
+                    val newSet = """try {
+				${'$'}iconFileName = ${'$'}this->imageManager->setCachedImage('icon-' . ${'$'}app . '-' . ${'$'}color . str_replace('/', '_', ${'$'}image), ${'$'}icon);
+				${'$'}response = new FileDisplayResponse(${'$'}iconFileName, Http::STATUS_OK, ['Content-Type' => 'image/svg+xml']);
+			} catch (\Throwable ${'$'}e) {
+				${'$'}response = new DataDisplayResponse(${'$'}icon, Http::STATUS_OK, ['Content-Type' => 'image/svg+xml']);
+			}
+		}"""
+                    if (content.contains(oldSet)) {
+                        content = content.replace(oldSet, newSet)
+                    }
+                    iconCtrl.writeText(content)
+                    Log.i(TAG, "Patched IconController.php theming icon fallback")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error applying theming and appstore patches", e)
+        }
+    }
+
+    fun setMaintenanceMode(enable: Boolean): Boolean {
+        val flag = if (enable) "--on" else "--off"
+        val out = executeOcc("maintenance:mode", flag)
+        Log.i(TAG, "Maintenance mode $flag: $out")
+        return out.contains("Maintenance mode", ignoreCase = true)
+    }
+
+    fun isUserExists(username: String): Boolean {
+        val out = executeOcc("user:info", username.trim())
+        return !out.contains("User does not exist", ignoreCase = true) && out.contains("user_id:", ignoreCase = true)
+    }
+
+    fun createAdminUser(username: String, pass: String): Boolean {
+        val out = executeOcc(
+            "user:add",
+            "--password-from-env",
+            "--group=admin",
+            username.trim(),
+            envVars = mapOf("OC_PASS" to pass)
+        )
+        Log.i(TAG, "Create admin user $username: $out")
+        return out.contains("The user \"$username\" was created successfully", ignoreCase = true) || isUserExists(username)
+    }
+
+    fun resetAdminPassword(adminUser: String, newPass: String): Boolean {
+        val output = executeOcc(
+            "user:resetpassword",
+            "--password-from-env",
+            adminUser.trim(),
+            envVars = mapOf("OC_PASS" to newPass)
+        )
+        Log.i(TAG, "Reset password output: $output")
+        return output.contains("Successfully reset password", ignoreCase = true)
+    }
+
+    fun getTrustedDomains(): List<String> {
+        val configFile = File(nextcloudDir, "config/config.php")
+        if (configFile.exists()) {
+            try {
+                val text = configFile.readText()
+                val match = Regex("'trusted_domains'\\s*=>\\s*array\\s*\\((.*?)\\)", RegexOption.DOT_MATCHES_ALL).find(text)
+                if (match != null) {
+                    val body = match.groupValues[1]
+                    val domainRegex = Regex("=>\\s*['\"]([^'\"]+)['\"]")
+                    val list = domainRegex.findAll(body).map { it.groupValues[1].trim() }.filter { it.isNotEmpty() }.toList()
+                    if (list.isNotEmpty()) return list
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Error reading config.php for trusted domains: ${e.message}")
+            }
+        }
+        val output = executeOcc("config:system:get", "trusted_domains")
+        return output.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    fun cleanDomainInput(raw: String): String {
+        var domain = raw.trim()
+        if (domain.contains("://")) {
+            domain = domain.substringAfter("://")
+        }
+        if (domain.contains("/")) {
+            domain = domain.substringBefore("/")
+        }
+        if (domain.contains(":")) {
+            if (domain.startsWith("[") && domain.contains("]:")) {
+                domain = domain.substringBeforeLast(":")
+            } else if (!domain.startsWith("[") && domain.count { it == ':' } == 1) {
+                domain = domain.substringBefore(":")
+            }
+        }
+        return domain.trim().trimEnd('/').lowercase()
+    }
+
+    fun addTrustedDomain(domain: String): Boolean {
+        val cleanDomain = cleanDomainInput(domain)
+        if (cleanDomain.isEmpty()) return false
+        val current = getTrustedDomains().toMutableList()
+        if (current.contains(cleanDomain)) return true
+
+        val nextIndex = current.size
+        val output = executeOcc("config:system:set", "trusted_domains", nextIndex.toString(), "--value=$cleanDomain")
+        Log.d(TAG, "Add trusted domain $cleanDomain: $output")
+        return output.contains("set to", ignoreCase = true)
+    }
+
+    fun removeTrustedDomain(domain: String): Boolean {
+        val cleanDomain = cleanDomainInput(domain)
+        if (cleanDomain == "localhost" || cleanDomain == "127.0.0.1") {
+            Log.w(TAG, "Cannot remove loopback domain: $cleanDomain")
+            return false
+        }
+        val current = getTrustedDomains()
+        val index = current.indexOf(cleanDomain)
+        if (index == -1) return false
+        val output = executeOcc("config:system:delete", "trusted_domains", index.toString())
+        return output.contains("deleted", ignoreCase = true) || !getTrustedDomains().contains(cleanDomain)
+    }
+
+    fun getDataDirectory(): String {
+        val configFile = File(nextcloudDir, "config/config.php")
+        if (configFile.exists()) {
+            try {
+                val text = configFile.readText()
+                val match = Regex("'datadirectory'\\s*=>\\s*['\"]([^'\"]+)['\"]").find(text)
+                if (match != null) {
+                    val path = match.groupValues[1].trim()
+                    if (path.isNotEmpty()) return path
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Error reading config.php for datadirectory: ${e.message}")
+            }
+        }
+        val output = executeOcc("config:system:get", "datadirectory").trim()
+        if (output.isNotEmpty() && !output.startsWith("Error")) {
+            return output
+        }
+        return File(nextcloudDir, "data").absolutePath
+    }
+
+    /**
+     * Changes root data directory with optional atomic migration of the SQLite database
+     * and user files, safeguarding against data loss and database decoupling.
+     */
+    fun migrateDataDirectory(
+        oldPath: String,
+        newPath: String,
+        copyData: Boolean,
+        onProgress: ((stage: String, percent: Int) -> Unit)? = null
+    ): Boolean {
+        val target = File(newPath)
+        if (!target.exists()) {
+            if (!target.mkdirs()) {
+                Log.e(TAG, "Could not create target data directory: $newPath")
+                return false
+            }
+        }
+
+        val source = File(oldPath)
+
+        // 1. Put Nextcloud into maintenance mode to safely freeze all write operations
+        onProgress?.invoke("Activating Maintenance Mode...", 5)
+        setMaintenanceMode(true)
+
+        try {
+            // 2. Ensure verification markers exist
+            ensureNcMarkers(target)
+
+            // 3. Migrate database and user files if requested
+            if (copyData && source.exists() && source.absolutePath != target.absolutePath) {
+                onProgress?.invoke("Calculating total data size...", 10)
+                val totalBytes = calculateTotalBytes(source)
+                val copiedBytes = LongArray(1) { 0L }
+                copyDataFiles(source, target, totalBytes, copiedBytes, onProgress)
+            } else if (!copyData && source.exists()) {
+                // Non-migration / fresh installation mode:
+                // Ensure the base database and system configuration exist in the new target so user accounts,
+                // passwords, and app configurations remain identical, but user files remain fresh.
+                onProgress?.invoke("Preserving system configuration & accounts...", 35)
+                val srcDb = File(source, "nextcloud.db")
+                val dstDb = File(target, "nextcloud.db")
+                if (srcDb.exists() && !dstDb.exists()) {
+                    copySingleFile(srcDb, dstDb, srcDb.length(), LongArray(1), null)
+                }
+                val wal = File(source, "nextcloud.db-wal")
+                if (wal.exists()) {
+                    copySingleFile(wal, File(target, "nextcloud.db-wal"), wal.length(), LongArray(1), null)
+                }
+                val shm = File(source, "nextcloud.db-shm")
+                if (shm.exists()) {
+                    copySingleFile(shm, File(target, "nextcloud.db-shm"), shm.length(), LongArray(1), null)
+                }
+
+                // Copy appdata configuration directory if present
+                source.listFiles { f -> f.isDirectory && f.name.startsWith("appdata_") }?.forEach { appDataDir ->
+                    val dstAppData = File(target, appDataDir.name)
+                    if (!dstAppData.exists()) {
+                        copyDirectoryRecursively(appDataDir, dstAppData, 0L, LongArray(1), null)
+                    }
+                }
+
+                // Initialize clean user files directory
+                val prefs = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
+                val adminUser = prefs.getString("admin_user", "admin") ?: "admin"
+                val userFilesDir = File(target, "$adminUser/files").apply { mkdirs() }
+                val readme = File(userFilesDir, "Welcome.md")
+                if (!readme.exists()) {
+                    readme.writeText("# Nextcloud Storage\n\nThis storage folder was initialized as a fresh storage location.\n")
+                }
+            }
+
+            // 4. Update Nextcloud configuration
+            onProgress?.invoke("Updating Nextcloud storage pointer...", 85)
+            executeOcc("config:system:set", "check_data_directory_permissions", "--value=false", "--type=boolean")
+            val output = executeOcc("config:system:set", "datadirectory", "--value=$newPath")
+            Log.i(TAG, "Set datadirectory: $output")
+            val success = output.contains("set to", ignoreCase = true)
+
+            // 5. Disable maintenance mode
+            onProgress?.invoke("Resuming Nextcloud server...", 92)
+            setMaintenanceMode(false)
+
+            if (success) {
+                if (!copyData) {
+                    onProgress?.invoke("Cleaning up old file catalog entries...", 95)
+                    executeOcc("files:cleanup")
+                }
+                // 6. Trigger background file scan so all files are indexed
+                onProgress?.invoke("Indexing files in new storage...", 98)
+                executeOcc("files:scan", "--all")
+            }
+
+            onProgress?.invoke("Storage configuration completed!", 100)
+            return success
+        } catch (e: Exception) {
+            Log.e(TAG, "Error configuring data directory", e)
+            setMaintenanceMode(false)
+            return false
+        }
+    }
+
+    /**
+     * Backward-compatible simple setter.
+     */
+    fun setDataDirectory(newPath: String): Boolean {
+        val current = getDataDirectory()
+        return migrateDataDirectory(current, newPath, copyData = true, null)
+    }
+
+    private fun ensureNcMarkers(dir: File) {
+        val ncData = File(dir, ".ncdata")
+        if (!ncData.exists()) {
+            try {
+                ncData.writeText("# Nextcloud data directory\n# Do not change this file\n")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not write .ncdata", e)
+            }
+        }
+        val ocData = File(dir, ".ocdata")
+        if (!ocData.exists()) {
+            try {
+                ocData.createNewFile()
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not write .ocdata", e)
+            }
+        }
+        val indexHtml = File(dir, "index.html")
+        if (!indexHtml.exists()) {
+            try {
+                indexHtml.createNewFile()
+            } catch (_: Exception) {}
+        }
+        val htaccess = File(dir, ".htaccess")
+        if (!htaccess.exists()) {
+            try {
+                htaccess.writeText("# Nextcloud data directory protection\nRequire all denied\n")
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun calculateTotalBytes(dir: File): Long {
+        var total = 0L
+        dir.listFiles()?.forEach { file ->
+            total += if (file.isDirectory) calculateTotalBytes(file) else file.length()
+        }
+        return total
+    }
+
+    private fun copyDataFiles(
+        source: File,
+        target: File,
+        totalBytes: Long,
+        copiedBytes: LongArray,
+        onProgress: ((String, Int) -> Unit)? = null
+    ) {
+        val files = source.listFiles() ?: return
+        for (file in files) {
+            val dest = File(target, file.name)
+            if (file.isDirectory) {
+                copyDirectoryRecursively(file, dest, totalBytes, copiedBytes, onProgress)
+            } else {
+                copySingleFile(file, dest, totalBytes, copiedBytes, onProgress)
+            }
+        }
+    }
+
+    private fun copyDirectoryRecursively(
+        source: File,
+        target: File,
+        totalBytes: Long,
+        copiedBytes: LongArray,
+        onProgress: ((String, Int) -> Unit)? = null
+    ) {
+        if (!target.exists()) target.mkdirs()
+        source.listFiles()?.forEach { child ->
+            val destChild = File(target, child.name)
+            if (child.isDirectory) {
+                copyDirectoryRecursively(child, destChild, totalBytes, copiedBytes, onProgress)
+            } else {
+                copySingleFile(child, destChild, totalBytes, copiedBytes, onProgress)
+            }
+        }
+    }
+
+    private fun copySingleFile(
+        src: File,
+        dest: File,
+        totalBytes: Long,
+        copiedBytes: LongArray,
+        onProgress: ((String, Int) -> Unit)? = null
+    ) {
+        if (dest.exists() && dest.length() == src.length() && dest.lastModified() >= src.lastModified()) {
+            copiedBytes[0] = copiedBytes[0] + src.length()
+            return
+        }
+        FileInputStream(src).use { inStream ->
+            FileOutputStream(dest).use { outStream ->
+                val buffer = ByteArray(64 * 1024)
+                var bytesRead: Int
+                while (inStream.read(buffer).also { bytesRead = it } != -1) {
+                    outStream.write(buffer, 0, bytesRead)
+                    copiedBytes[0] = copiedBytes[0] + bytesRead
+                    if (totalBytes > 0) {
+                        val pct = ((copiedBytes[0] * 100) / totalBytes).toInt().coerceIn(10, 89)
+                        onProgress?.invoke("Copying ${src.name} ($pct%)", pct)
+                    }
+                }
+            }
+        }
+    }
+
+    fun getWifiIpAddress(): String? {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                val addresses = iface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                        return addr.hostAddress
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Error resolving network interface IP: ${e.message}")
+        }
+        return null
+    }
+
+    fun executeOcc(vararg args: String, envVars: Map<String, String> = emptyMap()): String {
+        val phpBin = File(filesDir, "bin/php").absolutePath
+        val phpIni = File(filesDir, "conf/php.ini").absolutePath
+        val occ = File(filesDir, "nextcloud/occ").absolutePath
+        val libDir = File(filesDir, "lib").absolutePath
+        val binDir = File(filesDir, "bin").absolutePath
+        val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
+        val opensslCnf = File(filesDir, "conf/openssl.cnf")
+
+        if (!File(phpBin).exists() || !File(occ).exists()) {
+            Log.w(TAG, "PHP or occ not ready for command: ${args.joinToString(" ")}")
+            return ""
+        }
+
+        val command = mutableListOf(phpBin, "-c", phpIni, occ)
+        command.addAll(args)
+
+        return try {
+            val pb = ProcessBuilder(command)
+            pb.directory(filesDir)
+            pb.redirectErrorStream(true)
+            val env = pb.environment()
+            if (opensslCnf.exists()) {
+                env["OPENSSL_CONF"] = opensslCnf.absolutePath
+            }
+            env["TMPDIR"] = tmpDir.absolutePath
+            env["LD_LIBRARY_PATH"] = "$libDir:$binDir" + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+            for ((k, v) in envVars) {
+                env[k] = v
+            }
+
+            val process = pb.start()
+            val output = process.inputStream.bufferedReader().readText()
+            process.waitFor()
+            output
+        } catch (e: Exception) {
+            Log.e(TAG, "Error executing occ ${args.joinToString(" ")}", e)
+            ""
+        }
+    }
+}
