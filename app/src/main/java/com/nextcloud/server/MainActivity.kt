@@ -857,9 +857,11 @@ class MainActivity : AppCompatActivity() {
 
         prefs.edit().putInt("server_port", port).apply()
 
-        val adminUser = adminUserInput.text.toString().trim().ifEmpty { "admin" }
-        val adminPass = adminPassInput.text.toString().trim().ifEmpty { "NextcloudAdmin123!" }
-        prefs.edit().putString("admin_user", adminUser).putString("admin_pass", adminPass).apply()
+        if (!nextcloudManager.isInstalled()) {
+            val adminUser = adminUserInput.text.toString().trim().ifEmpty { "admin" }
+            val adminPass = adminPassInput.text.toString().trim().ifEmpty { "NextcloudAdmin123!" }
+            prefs.edit().putString("admin_user", adminUser).putString("admin_pass", adminPass).apply()
+        }
 
         if (!nextcloudManager.isInstalled()) {
             setupProgressContainer.visibility = View.VISIBLE
@@ -1166,6 +1168,10 @@ class MainActivity : AppCompatActivity() {
             adminUserInputLayout.error = "Username cannot be empty"
             return
         }
+        if (user.contains(" ")) {
+            adminUserInputLayout.error = "Username cannot contain spaces"
+            return
+        }
         if (pass.isEmpty()) {
             adminPassInputLayout.error = "Password cannot be empty"
             return
@@ -1178,28 +1184,42 @@ class MainActivity : AppCompatActivity() {
         val activeSavedUser = prefs.getString("admin_user", "admin") ?: "admin"
         val activeSavedPass = prefs.getString("admin_pass", "NextcloudAdmin123!") ?: "NextcloudAdmin123!"
 
+        if (user == activeSavedUser && pass == activeSavedPass) {
+            Toast.makeText(this, "Administrator credentials are unchanged.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         if (!nextcloudManager.isInstalled()) {
             prefs.edit().putString("admin_user", user).putString("admin_pass", pass).apply()
             Toast.makeText(this, "Admin credentials saved! They will be used to initialize Nextcloud when the server starts.", Toast.LENGTH_LONG).show()
             return
         }
 
-        setCredentialsUpdating(true, "Verifying administrator account '$user'...")
-
-        executor.execute {
-            val exists = nextcloudManager.isUserExists(user)
-            if (exists) {
-                runOnUiThread {
-                    setCredentialsUpdating(true, "Updating password for '$user' in Nextcloud...")
-                }
-                val ok = nextcloudManager.resetAdminPassword(user, pass)
+        val executeCredentialChange: () -> Unit = {
+            setCredentialsUpdating(true, "Updating administrator credentials...")
+            executor.execute {
+                val ok = nextcloudManager.updateSuperAdminCredentials(
+                    newUsername = user,
+                    newPass = pass,
+                    oldUsername = activeSavedUser,
+                    onProgress = { stepMsg ->
+                        runOnUiThread {
+                            setCredentialsUpdating(true, stepMsg)
+                        }
+                    }
+                )
                 runOnUiThread {
                     setCredentialsUpdating(false)
                     if (ok.first) {
                         prefs.edit().putString("admin_user", user).putString("admin_pass", pass).apply()
                         adminUserInputLayout.error = null
                         adminPassInputLayout.error = null
-                        Toast.makeText(this, "Password for administrator '$user' updated successfully!", Toast.LENGTH_LONG).show()
+                        val successMsg = if (user != activeSavedUser) {
+                            "Administrator changed to '$user' and previous admin removed!"
+                        } else {
+                            "Password for administrator '$user' updated successfully!"
+                        }
+                        Toast.makeText(this@MainActivity, successMsg, Toast.LENGTH_LONG).show()
                     } else {
                         // Revert inputs so misleading credentials are not displayed
                         adminUserInput.setText(activeSavedUser)
@@ -1207,51 +1227,29 @@ class MainActivity : AppCompatActivity() {
                         val errMsg = ok.second.ifEmpty { "Password was rejected by Nextcloud password policy" }
                         adminPassInputLayout.error = errMsg
                         createMaterialAlertDialog()
-                            .setTitle("Could Not Update Password")
+                            .setTitle("Could Not Update Administrator")
                             .setMessage("$errMsg\n\nThe credentials were not changed. Reverted to active credentials: '$activeSavedUser'.")
                             .setPositiveButton("OK", null)
                             .show()
                     }
                 }
-            } else {
-                runOnUiThread {
-                    setCredentialsUpdating(false)
-                    createMaterialAlertDialog()
-                        .setTitle("Create Administrator Account")
-                        .setMessage("No administrator named '$user' exists yet in Nextcloud.\n\nWould you like to create '$user' as an administrator with this password?")
-                        .setPositiveButton("Create Admin") { _, _ ->
-                            setCredentialsUpdating(true, "Creating administrator account '$user'...")
-                            executor.execute {
-                                val created = nextcloudManager.createAdminUser(user, pass)
-                                runOnUiThread {
-                                    setCredentialsUpdating(false)
-                                    if (created.first) {
-                                        prefs.edit().putString("admin_user", user).putString("admin_pass", pass).apply()
-                                        adminUserInputLayout.error = null
-                                        adminPassInputLayout.error = null
-                                        Toast.makeText(this, "Administrator account '$user' created successfully!", Toast.LENGTH_LONG).show()
-                                    } else {
-                                        // Revert inputs so misleading credentials are not displayed
-                                        adminUserInput.setText(activeSavedUser)
-                                        adminPassInput.setText(activeSavedPass)
-                                        val errMsg = created.second.ifEmpty { "Failed to create administrator '$user'" }
-                                        adminPassInputLayout.error = errMsg
-                                        createMaterialAlertDialog()
-                                            .setTitle("Could Not Create Administrator")
-                                            .setMessage("$errMsg\n\nReverted to active credentials: '$activeSavedUser'.")
-                                            .setPositiveButton("OK", null)
-                                            .show()
-                                    }
-                                }
-                            }
-                        }
-                        .setNegativeButton("Cancel") { _, _ ->
-                            adminUserInput.setText(activeSavedUser)
-                            adminPassInput.setText(activeSavedPass)
-                        }
-                        .show()
-                }
             }
+        }
+
+        if (user != activeSavedUser) {
+            createMaterialAlertDialog()
+                .setTitle("Change Server Administrator")
+                .setMessage("Change the primary server administrator from '$activeSavedUser' to '$user'?\n\nExisting files will be transferred to '$user', and the previous administrator '$activeSavedUser' will be removed.")
+                .setPositiveButton("Change Admin") { _, _ ->
+                    executeCredentialChange()
+                }
+                .setNegativeButton("Cancel") { _, _ ->
+                    adminUserInput.setText(activeSavedUser)
+                    adminPassInput.setText(activeSavedPass)
+                }
+                .show()
+        } else {
+            executeCredentialChange()
         }
     }
 

@@ -346,6 +346,37 @@ ${'$'}CONFIG = [
                     Log.i(TAG, "Patched IconController.php theming icon fallback")
                 }
             }
+
+            // 4. Patch Notes App to prevent NoUserException 500 crash when session user does not exist or was deleted
+            val noteUtil = File(nextcloudDir, "apps/notes/lib/Service/NoteUtil.php")
+            if (noteUtil.exists()) {
+                var content = noteUtil.readText()
+                val oldCatch = "catch (NotesFolderException \$e) {"
+                val newCatch = "catch (\\Throwable \$e) {"
+                if (content.contains(oldCatch)) {
+                    content = content.replace(oldCatch, newCatch)
+                    noteUtil.writeText(content)
+                    Log.i(TAG, "Patched NoteUtil.php to catch \\Throwable against NoUserException")
+                }
+            }
+
+            val notesCap = File(nextcloudDir, "apps/notes/lib/AppInfo/Capabilities.php")
+            if (notesCap.exists()) {
+                var content = notesCap.readText()
+                val oldNotesCall = "'notes_path' => \$this->userId !== null && \$this->userId !== ' ' ? \$this->noteUtil->getNotesFolderUserPath(\$this->userId, true) : null,"
+                if (content.contains(oldNotesCall)) {
+                    val newNotesCall = """'notes_path' => (${'$'}this->userId !== null && ${'$'}this->userId !== ' ') ? (function() {
+				try {
+					return ${'$'}this->noteUtil->getNotesFolderUserPath(${'$'}this->userId, true);
+				} catch (\Throwable ${'$'}e) {
+					return null;
+				}
+			})() : null,"""
+                    content = content.replace(oldNotesCall, newNotesCall)
+                    notesCap.writeText(content)
+                    Log.i(TAG, "Patched Notes Capabilities.php against NoUserException crash")
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error applying theming and appstore patches", e)
         }
@@ -412,6 +443,97 @@ ${'$'}CONFIG = [
             it.contains("password", ignoreCase = true) || it.contains("error", ignoreCase = true) || it.contains("failed", ignoreCase = true)
         } ?: output.trim()
         return Pair(false, err)
+    }
+
+    fun updateSuperAdminCredentials(
+        newUsername: String,
+        newPass: String,
+        oldUsername: String,
+        onProgress: ((String) -> Unit)? = null
+    ): Pair<Boolean, String> {
+        if (!isReadyForOcc()) return Pair(false, "Nextcloud server is not installed yet")
+
+        val newClean = newUsername.trim()
+        val oldClean = oldUsername.trim()
+
+        try {
+            executeOcc("config:app:set", "password_policy", "enforce_have_i_been_pwned", "--value=0")
+            executeOcc("config:app:set", "password_policy", "enforce_common_passwords", "--value=0")
+            executeOcc("config:app:set", "password_policy", "min_length", "--value=4")
+        } catch (_: Exception) {}
+
+        // Case 1: Same username - only update password or re-verify
+        if (newClean.equals(oldClean, ignoreCase = true)) {
+            onProgress?.invoke("Updating administrator password in Nextcloud...")
+            val exists = isUserExists(newClean)
+            if (!exists) {
+                val created = createAdminUser(newClean, newPass)
+                if (!created.first) return created
+            } else {
+                val reset = resetAdminPassword(newClean, newPass)
+                if (!reset.first) return reset
+            }
+            executeOcc("group:adduser", "admin", newClean)
+            ensureThemingAndAppstorePatches()
+            purgeStaleWebSessions()
+            return Pair(true, "")
+        }
+
+        // Case 2: Username is changing!
+        // Step 1: Ensure new superadmin user is created with the new password
+        onProgress?.invoke("Configuring new administrator '$newClean'...")
+        val newExists = isUserExists(newClean)
+        if (!newExists) {
+            val created = createAdminUser(newClean, newPass)
+            if (!created.first) {
+                return created
+            }
+        } else {
+            val reset = resetAdminPassword(newClean, newPass)
+            if (!reset.first) {
+                return reset
+            }
+            executeOcc("group:adduser", "admin", newClean)
+        }
+
+        // Step 2: Transfer files from old administrator to new administrator
+        if (oldClean.isNotEmpty() && isUserExists(oldClean) && !oldClean.equals(newClean, ignoreCase = true)) {
+            onProgress?.invoke("Transferring files from '$oldClean' to '$newClean'...")
+            try {
+                val transferOut = executeOcc("files:transfer-ownership", oldClean, newClean)
+                Log.i(TAG, "Ownership transfer from $oldClean to $newClean: $transferOut")
+            } catch (e: Exception) {
+                Log.w(TAG, "File transfer ownership warning: ${e.message}")
+            }
+
+            // Step 3: Delete old administrator account so no ghost account remains!
+            onProgress?.invoke("Removing previous administrator '$oldClean'...")
+            val delOut = executeOcc("user:delete", oldClean)
+            Log.i(TAG, "Deleted old administrator $oldClean: $delOut")
+        }
+
+        // Step 4: If the default 'admin' account still exists and is not newClean, purge it as well
+        if (!newClean.equals("admin", ignoreCase = true) && isUserExists("admin")) {
+            onProgress?.invoke("Purging leftover default 'admin' user...")
+            try {
+                executeOcc("files:transfer-ownership", "admin", newClean)
+            } catch (_: Exception) {}
+            val delAdminOut = executeOcc("user:delete", "admin")
+            Log.i(TAG, "Purged default admin user: $delAdminOut")
+        }
+
+        // Step 5: Rescan new administrator directory
+        onProgress?.invoke("Scanning files for '$newClean'...")
+        try {
+            executeOcc("files:scan", "--path=/$newClean/files")
+        } catch (_: Exception) {}
+
+        // Step 6: Invalidate active web sessions & clean orphaned auth tokens
+        onProgress?.invoke("Invalidating stale sessions...")
+        ensureThemingAndAppstorePatches()
+        purgeStaleWebSessions()
+
+        return Pair(true, "")
     }
 
     fun getTrustedDomains(): List<String> {
@@ -796,4 +918,65 @@ ${'$'}CONFIG = [
             ""
         }
     }
+
+    fun executePhpCode(code: String): String {
+        val phpBin = File(filesDir, "bin/php").absolutePath
+        val phpIni = File(filesDir, "conf/php.ini").absolutePath
+        val libDir = File(filesDir, "lib").absolutePath
+        val binDir = File(filesDir, "bin").absolutePath
+        val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
+        val opensslCnf = File(filesDir, "conf/openssl.cnf")
+
+        val command = listOf(phpBin, "-c", phpIni, "-r", code)
+
+        return try {
+            val pb = ProcessBuilder(command)
+            pb.directory(filesDir)
+            pb.redirectErrorStream(true)
+            val env = pb.environment()
+            if (opensslCnf.exists()) {
+                env["OPENSSL_CONF"] = opensslCnf.absolutePath
+            }
+            env["TMPDIR"] = tmpDir.absolutePath
+            env["LD_LIBRARY_PATH"] = "$libDir:$binDir" + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+
+            val process = pb.start()
+            val output = process.inputStream.bufferedReader().readText()
+            process.waitFor()
+            output
+        } catch (e: Exception) {
+            Log.e(TAG, "Error executing PHP code", e)
+            ""
+        }
+    }
+
+    fun purgeStaleWebSessions() {
+        try {
+            val tmpDir = File(filesDir, "tmp")
+            if (tmpDir.exists()) {
+                val sessions = tmpDir.listFiles { f -> f.name.startsWith("sess_") }
+                sessions?.forEach { it.delete() }
+                Log.i(TAG, "Purged ${sessions?.size ?: 0} stale PHP session files from ${tmpDir.absolutePath}")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not purge session files: ${e.message}")
+        }
+
+        try {
+            val dbFile = File(getDataDirectory(), "owncloud.db")
+            if (dbFile.exists()) {
+                val sqlitePhp = """
+                    try {
+                        ${'$'}db = new PDO('sqlite:${dbFile.absolutePath}');
+                        ${'$'}db->exec("DELETE FROM oc_authtoken WHERE uid NOT IN (SELECT uid FROM oc_users)");
+                    } catch (\Throwable ${'$'}e) {}
+                """.trimIndent()
+                executePhpCode(sqlitePhp)
+                Log.i(TAG, "Purged orphaned oc_authtoken entries from owncloud.db")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not clean authtokens: ${e.message}")
+        }
+    }
 }
+
