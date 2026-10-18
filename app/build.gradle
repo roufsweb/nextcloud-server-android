@@ -25,6 +25,13 @@ android {
         noCompress 'zip'
     }
 
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+        doNotStrip "**/*.so"
+    }
+
     buildTypes {
         release {
             minifyEnabled false

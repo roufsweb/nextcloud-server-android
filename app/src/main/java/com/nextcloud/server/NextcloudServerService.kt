@@ -108,6 +108,7 @@ class NextcloudServerService : Service() {
 
         if (isServerRunning) {
             Log.i("NextcloudServer", "Server is already running, skipping redundant startup.")
+            ensureForeground(lastStatus)
             return START_STICKY
         }
 
@@ -214,20 +215,22 @@ class NextcloudServerService : Service() {
             tmpDir.setExecutable(true, false)
         } catch (_: Exception) {}
 
-        // Copy binaries from assets
-        AssetHelper.copyAssetFolder(this, "bin", binDir.absolutePath)
-        
-        // Make everything in bin executable
-        binDir.listFiles()?.forEach { file ->
-            AssetHelper.makeExecutable(file.absolutePath)
-        }
+        // Copy binaries from assets (if present in assets for fallback)
+        try {
+            AssetHelper.copyAssetFolder(this, "bin", binDir.absolutePath)
+            binDir.listFiles()?.forEach { file ->
+                AssetHelper.makeExecutable(file.absolutePath)
+            }
+        } catch (_: Exception) {}
 
         // Copy and process configs
         processConfig("nginx.conf.template", File(confDir, "nginx.conf"), port)
         processConfig("php-fpm.conf.template", File(confDir, "php-fpm.conf"), port)
         processConfig("php.ini.template", File(confDir, "php.ini"), port)
         AssetHelper.copyAssetFolder(this, "conf", confDir.absolutePath) // For mime.types
-        AssetHelper.copyAssetFolder(this, "lib", libDir.absolutePath)
+        try {
+            AssetHelper.copyAssetFolder(this, "lib", libDir.absolutePath)
+        } catch (_: Exception) {}
 
         // Auto-install Nextcloud if not already installed
         val nextcloudManager = NextcloudManager(this)
@@ -267,6 +270,7 @@ class NextcloudServerService : Service() {
     private fun processConfig(assetName: String, targetFile: File, port: Int) {
         val template = assets.open(assetName).bufferedReader().readText()
         val processed = template.replace("{{FILES_DIR}}", filesDir.absolutePath)
+            .replace("{{NATIVE_LIB_DIR}}", applicationInfo.nativeLibraryDir)
             .replace("{{USER}}", "shell") // Default for Android
             .replace("{{GROUP}}", "shell")
             .replace("{{PORT}}", port.toString())
@@ -274,32 +278,26 @@ class NextcloudServerService : Service() {
     }
 
     private fun startPhpFpm() {
-        val binDir = File(filesDir, "bin")
-        var phpBin = File(binDir, "php-fpm")
-        if (!phpBin.exists()) {
-            phpBin = File(binDir, "php")
-        }
-        
-        if (!phpBin.exists()) {
-            throw IOException("PHP binary not found in ${binDir.absolutePath}")
+        val phpBin = BinaryHelper.getPhpFpmBinary(this)
+        val phpBinFile = File(phpBin)
+        if (!phpBinFile.exists()) {
+            throw IOException("PHP binary not found at $phpBin")
         }
 
         val phpConf = File(filesDir, "conf/php-fpm.conf").absolutePath
         val phpIni = File(filesDir, "conf/php.ini").absolutePath
-        val pb = ProcessBuilder(phpBin.absolutePath, "-p", filesDir.absolutePath, "-y", phpConf, "-c", phpIni, "-F")
+        val pb = ProcessBuilder(phpBin, "-p", filesDir.absolutePath, "-y", phpConf, "-c", phpIni, "-F")
         pb.directory(filesDir)
         pb.redirectErrorStream(true)
         
         val env = pb.environment()
-        val libDir = File(filesDir, "lib").absolutePath
-        val binDirForLibs = File(filesDir, "bin").absolutePath
         val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
         val opensslCnf = File(filesDir, "conf/openssl.cnf")
         if (opensslCnf.exists()) {
             env["OPENSSL_CONF"] = opensslCnf.absolutePath
         }
         env["TMPDIR"] = tmpDir.absolutePath
-        env["LD_LIBRARY_PATH"] = "$libDir:$binDirForLibs" + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+        env["LD_LIBRARY_PATH"] = BinaryHelper.getLdLibraryPath(this) + ":" + (env["LD_LIBRARY_PATH"] ?: "")
         
         phpProcess = pb.start()
         
@@ -315,7 +313,7 @@ class NextcloudServerService : Service() {
     }
 
     private fun startNginx() {
-        val nginxBin = File(filesDir, "bin/nginx").absolutePath
+        val nginxBin = BinaryHelper.getNginxBinary(this)
         val nginxConf = File(filesDir, "conf/nginx.conf").absolutePath
         val nginxErrorLog = File(filesDir, "logs/nginx_error.log").absolutePath
         val pb = ProcessBuilder(nginxBin, "-p", filesDir.absolutePath, "-c", nginxConf, "-e", nginxErrorLog, "-g", "daemon off;")
@@ -324,9 +322,7 @@ class NextcloudServerService : Service() {
         
         // Set LD_LIBRARY_PATH
         val env = pb.environment()
-        val libDir = File(filesDir, "lib").absolutePath
-        val binDirForLibs = File(filesDir, "bin").absolutePath
-        env["LD_LIBRARY_PATH"] = "$libDir:$binDirForLibs" + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+        env["LD_LIBRARY_PATH"] = BinaryHelper.getLdLibraryPath(this) + ":" + (env["LD_LIBRARY_PATH"] ?: "")
 
         nginxProcess = pb.start()
 
@@ -354,6 +350,15 @@ class NextcloudServerService : Service() {
         isServerRunning = false
         AppPreferences(this).isServerRunning = false
         lastStatus = "Stopped"
+        val intent = Intent("com.nextcloud.server.STATUS_UPDATE")
+        intent.putExtra("status", "Server is stopped")
+        sendBroadcast(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
         try {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
@@ -524,7 +529,12 @@ class NextcloudServerService : Service() {
             updateStatus("Server is stopped. Storage updated to $newPath")
             Handler(Looper.getMainLooper()).postDelayed({
                 if (!isMigrationRunning && phpProcess == null && nginxProcess == null) {
-                    stopForeground(true)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        stopForeground(true)
+                    }
                     stopSelf()
                 }
             }, 3000)

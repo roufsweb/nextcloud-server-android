@@ -31,7 +31,7 @@ class NextcloudManager(private val context: Context) {
     private val configPhp: File = File(nextcloudDir, "config/config.php")
 
     fun isReadyForOcc(isInstalling: Boolean = false): Boolean {
-        val phpBin = File(filesDir, "bin/php")
+        val phpBin = File(BinaryHelper.getPhpBinary(context))
         val occ = File(filesDir, "nextcloud/occ")
         val consolePhp = File(filesDir, "nextcloud/console.php")
         val configPhp = File(filesDir, "nextcloud/config/config.php")
@@ -885,11 +885,9 @@ ${'$'}CONFIG = [
     }
 
     fun executeOcc(vararg args: String, envVars: Map<String, String> = emptyMap()): String {
-        val phpBin = File(filesDir, "bin/php").absolutePath
+        val phpBin = BinaryHelper.getPhpBinary(context)
         val phpIni = File(filesDir, "conf/php.ini").absolutePath
         val occ = File(filesDir, "nextcloud/occ").absolutePath
-        val libDir = File(filesDir, "lib").absolutePath
-        val binDir = File(filesDir, "bin").absolutePath
         val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
         val opensslCnf = File(filesDir, "conf/openssl.cnf")
 
@@ -911,7 +909,7 @@ ${'$'}CONFIG = [
                 env["OPENSSL_CONF"] = opensslCnf.absolutePath
             }
             env["TMPDIR"] = tmpDir.absolutePath
-            env["LD_LIBRARY_PATH"] = "$libDir:$binDir" + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+            env["LD_LIBRARY_PATH"] = BinaryHelper.getLdLibraryPath(context) + ":" + (env["LD_LIBRARY_PATH"] ?: "")
             for ((k, v) in envVars) {
                 env[k] = v
             }
@@ -927,10 +925,8 @@ ${'$'}CONFIG = [
     }
 
     fun executePhpCode(code: String): String {
-        val phpBin = File(filesDir, "bin/php").absolutePath
+        val phpBin = BinaryHelper.getPhpBinary(context)
         val phpIni = File(filesDir, "conf/php.ini").absolutePath
-        val libDir = File(filesDir, "lib").absolutePath
-        val binDir = File(filesDir, "bin").absolutePath
         val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
         val opensslCnf = File(filesDir, "conf/openssl.cnf")
 
@@ -945,7 +941,7 @@ ${'$'}CONFIG = [
                 env["OPENSSL_CONF"] = opensslCnf.absolutePath
             }
             env["TMPDIR"] = tmpDir.absolutePath
-            env["LD_LIBRARY_PATH"] = "$libDir:$binDir" + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+            env["LD_LIBRARY_PATH"] = BinaryHelper.getLdLibraryPath(context) + ":" + (env["LD_LIBRARY_PATH"] ?: "")
 
             val process = pb.start()
             val output = process.inputStream.bufferedReader().readText()

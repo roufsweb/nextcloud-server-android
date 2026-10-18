@@ -12,14 +12,12 @@ class CronWorker(context: Context, workerParams: WorkerParameters) : Worker(cont
         Log.d("CronWorker", "Starting Nextcloud background jobs")
         
         val filesDir = applicationContext.filesDir.absolutePath
-        val phpBin = File(filesDir, "bin/php").absolutePath
+        val phpBin = BinaryHelper.getPhpBinary(applicationContext)
         val cronPhp = File(filesDir, "nextcloud/cron.php").absolutePath
         
         return try {
             val pb = ProcessBuilder(phpBin, "-c", File(filesDir, "conf/php.ini").absolutePath, "-f", cronPhp)
             pb.directory(File(filesDir))
-            val libDir = File(filesDir, "lib").absolutePath
-            val binDir = File(filesDir, "bin").absolutePath
             val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
             val env = pb.environment()
             val opensslCnf = File(filesDir, "conf/openssl.cnf")
@@ -27,7 +25,7 @@ class CronWorker(context: Context, workerParams: WorkerParameters) : Worker(cont
                 env["OPENSSL_CONF"] = opensslCnf.absolutePath
             }
             env["TMPDIR"] = tmpDir.absolutePath
-            env["LD_LIBRARY_PATH"] = "$libDir:$binDir" + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+            env["LD_LIBRARY_PATH"] = BinaryHelper.getLdLibraryPath(applicationContext) + ":" + (env["LD_LIBRARY_PATH"] ?: "")
 
             val process = pb.start()
             val exitCode = process.waitFor()

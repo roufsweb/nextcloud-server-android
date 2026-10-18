@@ -11,3 +11,4 @@ local.properties
 *.html
 !index.html
 .agents/
+scratch/
