@@ -63,6 +63,14 @@ class NextcloudManager(private val context: Context) {
         dataDir: String,
         onProgress: ((stage: String, percent: Int) -> Unit)? = null
     ): Boolean {
+        // Pre-flight check: minimum free storage required (1.2 GB)
+        val freeBytes = filesDir.freeSpace
+        val minRequiredBytes = 1200L * 1024 * 1024
+        if (freeBytes < minRequiredBytes) {
+            val freeMb = freeBytes / (1024 * 1024)
+            throw java.io.IOException("Insufficient internal storage. Nextcloud requires at least 1.2 GB free space, only ${freeMb} MB available.")
+        }
+
         onProgress?.invoke("Extracting Nextcloud core...", 5)
         if (!File(nextcloudDir, "version.php").exists()) {
             AssetHelper.unzipAsset(context, "nextcloud.zip", filesDir.absolutePath, 33992) { zipPct ->

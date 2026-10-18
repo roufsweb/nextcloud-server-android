@@ -355,6 +355,9 @@ class MainActivity : AppCompatActivity() {
                         serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_primary)
                         serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_primary))
                         serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_primary)
+                        if (stage.isNotEmpty()) {
+                            Toast.makeText(this@MainActivity, stage, Toast.LENGTH_LONG).show()
+                        }
                     }
                     if (success) {
                         refreshStorageAndDomains()

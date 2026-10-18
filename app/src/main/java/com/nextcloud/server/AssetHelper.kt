@@ -30,6 +30,10 @@ object AssetHelper {
 
     private fun copyAssetFile(context: Context, assetPath: String, targetPath: String) {
         val targetFile = File(targetPath)
+        val parent = targetFile.parentFile
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs()
+        }
         if (targetFile.exists()) {
             try {
                 val fd = context.assets.openFd(assetPath)
@@ -80,13 +84,20 @@ object AssetHelper {
                         entryCount++
                         val file = File(targetDir, entry.name)
                         if (entry.isDirectory) {
-                            if (createdDirs.add(file.absolutePath)) {
+                            if (!file.exists()) {
                                 file.mkdirs()
                             }
+                            createdDirs.add(file.absolutePath)
                         } else {
                             val parent = file.parentFile
-                            if (parent != null && createdDirs.add(parent.absolutePath)) {
-                                parent.mkdirs()
+                            if (parent != null && (!parent.exists() || !createdDirs.contains(parent.absolutePath))) {
+                                if (!parent.exists()) {
+                                    parent.mkdirs()
+                                }
+                                createdDirs.add(parent.absolutePath)
+                            }
+                            if (file.exists() && file.isDirectory) {
+                                file.deleteRecursively()
                             }
                             java.io.BufferedOutputStream(FileOutputStream(file), 65536).use { output ->
                                 var bytesRead: Int
@@ -97,7 +108,7 @@ object AssetHelper {
                         }
                         zip.closeEntry()
 
-                        if (onProgress != null && entryCount % 350 == 0) {
+                        if (onProgress != null && (entryCount % 100 == 0 || entryCount == totalEntries)) {
                             val pct = ((entryCount * 100) / totalEntries).coerceIn(0, 100)
                             if (pct != lastReportedPct) {
                                 lastReportedPct = pct
@@ -115,13 +126,11 @@ object AssetHelper {
     fun makeExecutable(filePath: String) {
         val file = File(filePath)
         if (file.exists()) {
-            if (!file.setExecutable(true, false)) {
-                // Fallback to chmod 755
-                try {
-                    Runtime.getRuntime().exec("chmod 755 $filePath").waitFor()
-                } catch (e: Exception) {
-                    // Ignore
-                }
+            file.setReadable(true, false)
+            file.setExecutable(true, false)
+            try {
+                Runtime.getRuntime().exec(arrayOf("chmod", "755", filePath)).waitFor()
+            } catch (_: Exception) {
             }
         }
     }

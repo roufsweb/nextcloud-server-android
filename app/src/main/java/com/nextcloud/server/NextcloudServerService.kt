@@ -117,6 +117,15 @@ class NextcloudServerService : Service() {
         ensureForeground("Starting server...")
         
         executor.execute {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val setupWakeLock = powerManager?.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "NextcloudServer::SetupWakeLock"
+            )?.apply {
+                setReferenceCounted(false)
+                acquire(45 * 60 * 1000L /* 45 minutes max */)
+            }
+
             try {
                 val ncManager = NextcloudManager(this@NextcloudServerService)
                 val isFirstInstall = !ncManager.isInstalled()
@@ -165,10 +174,17 @@ class NextcloudServerService : Service() {
                     broadcastSetupProgress(false, "Server is ready!", 100, true)
                 }
                 updateStatus("Nextcloud is running at $ipDisplay")
-            } catch (e: Exception) {
-                Log.e("NextcloudServer", "Error starting server", e)
-                broadcastSetupProgress(false, "Setup failed: ${e.message}", 0, false)
-                updateStatus("Error starting server: ${e.message}")
+            } catch (t: Throwable) {
+                Log.e("NextcloudServer", "Error starting server", t)
+                val errMsg = t.localizedMessage ?: t.message ?: t.javaClass.simpleName
+                broadcastSetupProgress(false, "Setup failed: $errMsg", 0, false)
+                updateStatus("Error starting server: $errMsg")
+            } finally {
+                try {
+                    if (setupWakeLock?.isHeld == true) {
+                        setupWakeLock.release()
+                    }
+                } catch (_: Exception) {}
             }
         }
 
