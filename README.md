@@ -12,15 +12,13 @@ Nextcloud Server for Android packages a complete, native Linux server stack into
 
 ## Releases & Downloads
 
-Pre-built packages are available in the [`releases/`](releases/) directory and on [GitHub Releases](https://github.com/roufsweb/nextcloud-server-android/releases):
+Pre-built packages are available on [GitHub Releases](https://github.com/roufsweb/nextcloud-server-android/releases) and on the [Web Landing Page](https://roufsweb.github.io/nextcloud-server-android/):
 
-* **Standard ZIP (Recommended, 45% smaller)**:
-  * **File**: [`releases/nextcloud-server-v1.0.0-arm64-v8a.apk.zip`](releases/nextcloud-server-v1.0.0-arm64-v8a.apk.zip) (**423.7 MB**)
-  * **SHA-256**: `43B3AA0321E41FB0587B2159428C4BD46D2A6F37BCA52C64DD8E8E0550619473`
-* **Direct APK Package**:
-  * **File**: [`releases/nextcloud-server-v1.0.0-arm64-v8a.apk`](releases/nextcloud-server-v1.0.0-arm64-v8a.apk) (775.5 MB)
-  * **SHA-256**: `8E84671ED6C68C007C4DC0472AA364B938B8A2D8F5C4929B3B8B705BB1785B50`
-* **Target Architecture**: ARM64 (`arm64-v8a`)
+* **Standard Compressed Package (ZIP)**:
+  * **File**: `nextcloud-server-v1.0.0-arm64-v8a.apk.zip` (**423.6 MB**) — *45% smaller than raw APK*
+  * **SHA-256**: `37BF3C50031DBB2C7EF3F65CDD0B3F71F98013740D9CB5745AC007EC9F569F78`
+  * **Installation**: Download and unzip the archive with any file manager, then tap the extracted `.apk` to install.
+* **Target Architecture**: ARM64 (`arm64-v8a` / aarch64)
 * **Minimum Android**: Android 8.0 (API 26)+
 
 ---

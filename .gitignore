@@ -9,4 +9,5 @@ build/
 local.properties
 .idea/
 *.html
+!index.html
 .agents/
