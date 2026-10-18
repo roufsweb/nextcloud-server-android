@@ -389,8 +389,7 @@ class UploadRelayService(
      */
     private fun triggerNextcloudScan(storageUuid: String, relativeDir: String, fileName: String) {
         try {
-            val adminUser = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
-                .getString("admin_user", "admin") ?: "admin"
+            val adminUser = AppPreferences(context).adminUser
 
             // Run OCC file scan in background executor
             executor.execute {

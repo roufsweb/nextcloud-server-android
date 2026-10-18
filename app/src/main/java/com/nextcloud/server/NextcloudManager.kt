@@ -118,7 +118,7 @@ class NextcloudManager(private val context: Context) {
             executeOcc("config:system:set", "tempdirectory", "--value=" + File(filesDir, "tmp").apply { mkdirs() }.absolutePath)
             executeOcc("config:system:set", "appstoreenabled", "--value=true", "--type=boolean")
             executeOcc("config:system:set", "default_phone_region", "--value=US")
-            val currentPort = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE).getInt("server_port", 8000)
+            val currentPort = AppPreferences(context).serverPort
             executeOcc("config:system:set", "overwrite.cli.url", "--value=http://localhost:$currentPort")
             onProgress?.invoke("Nextcloud core setup ready", 92)
         }
@@ -185,7 +185,7 @@ class NextcloudManager(private val context: Context) {
                 configDir.mkdirs()
             }
             val appsConfig = File(configDir, "apps.config.php")
-            val currentPort = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE).getInt("server_port", 8000)
+            val currentPort = AppPreferences(context).serverPort
             val content = """<?php
 ${'$'}isHttps = (!empty(${'$'}_SERVER['HTTPS']) && ${'$'}_SERVER['HTTPS'] !== 'off')
     || (!empty(${'$'}_SERVER['HTTP_X_FORWARDED_PROTO']) && ${'$'}_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
@@ -626,7 +626,7 @@ ${'$'}CONFIG = [
                 Log.d(TAG, "Error reading config.php for datadirectory: ${e.message}")
             }
         }
-        val prefs = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
+        val prefs = AppPreferences(context).sharedPreferences
         val savedDataDir = prefs.getString("data_dir", null)
         if (!savedDataDir.isNullOrBlank()) {
             return savedDataDir
@@ -708,8 +708,7 @@ ${'$'}CONFIG = [
                 }
 
                 // Initialize clean user files directory
-                val prefs = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
-                val adminUser = prefs.getString("admin_user", "admin") ?: "admin"
+                val adminUser = AppPreferences(context).adminUser
                 val userFilesDir = File(target, "$adminUser/files").apply { mkdirs() }
                 val readme = File(userFilesDir, "Welcome.md")
                 if (!readme.exists()) {

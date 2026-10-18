@@ -1,6 +1,7 @@
 package com.nextcloud.server
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.*
@@ -20,8 +21,8 @@ class NextcloudServerService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        val prefs = getSharedPreferences("NextcloudPrefs", android.content.Context.MODE_PRIVATE)
-        if (prefs.getBoolean("wake_lock_enabled", true)) {
+        val prefs = AppPreferences(this)
+        if (prefs.wakeLockEnabled) {
             setWakeLockEnabled(true)
         }
     }
@@ -96,7 +97,21 @@ class NextcloudServerService : Service() {
             return START_STICKY
         }
 
-        val savedPort = getSharedPreferences("NextcloudPrefs", android.content.Context.MODE_PRIVATE).getInt("server_port", 8000)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val userManager = getSystemService(Context.USER_SERVICE) as? UserManager
+            if (userManager?.isUserUnlocked == false) {
+                Log.w("NextcloudServer", "Device is still locked in Direct Boot mode. Delaying startup until user unlocks.")
+                ensureForeground("Waiting for device unlock...")
+                return START_NOT_STICKY
+            }
+        }
+
+        if (isServerRunning) {
+            Log.i("NextcloudServer", "Server is already running, skipping redundant startup.")
+            return START_STICKY
+        }
+
+        val savedPort = AppPreferences(this).serverPort
         val port = intent?.getIntExtra("port", savedPort) ?: savedPort
 
         ensureForeground("Starting server...")
@@ -201,7 +216,7 @@ class NextcloudServerService : Service() {
         // Auto-install Nextcloud if not already installed
         val nextcloudManager = NextcloudManager(this)
         if (!nextcloudManager.isInstalled()) {
-            val prefs = getSharedPreferences("NextcloudPrefs", MODE_PRIVATE)
+            val prefs = AppPreferences(this).sharedPreferences
             val adminUser = prefs.getString("admin_user", "admin") ?: "admin"
             val adminPass = prefs.getString("admin_pass", "NextcloudAdmin123!") ?: "NextcloudAdmin123!"
             val dataDir = prefs.getString("data_dir", File(nextcloudDir, "data").absolutePath)
@@ -321,6 +336,7 @@ class NextcloudServerService : Service() {
         phpProcess = null
         nginxProcess = null
         isServerRunning = false
+        AppPreferences(this).isServerRunning = false
         lastStatus = "Stopped"
         try {
             if (wakeLock?.isHeld == true) {
@@ -422,6 +438,7 @@ class NextcloudServerService : Service() {
     private fun updateStatus(content: String) {
         lastStatus = content
         isServerRunning = content.contains("running", ignoreCase = true) || content.contains("http://", ignoreCase = true)
+        AppPreferences(this).isServerRunning = isServerRunning
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(1, createNotification(content))
         
@@ -464,7 +481,7 @@ class NextcloudServerService : Service() {
 
         // 2. Persist new storage location in prefs
         if (success) {
-            getSharedPreferences("NextcloudPrefs", MODE_PRIVATE).edit()
+            AppPreferences(this).sharedPreferences.edit()
                 .putString("data_dir", newPath)
                 .apply()
         }
@@ -483,7 +500,7 @@ class NextcloudServerService : Service() {
             } catch (e: Exception) {
                 Log.e("NextcloudServer", "Error restarting PHP-FPM after migration", e)
             }
-            val port = getSharedPreferences("NextcloudPrefs", MODE_PRIVATE).getInt("server_port", 8000)
+            val port = AppPreferences(this).serverPort
             val wifiIp = nextcloudManager.getWifiIpAddress()
             val ipDisplay = if (wifiIp != null) "http://$wifiIp:$port" else "http://localhost:$port"
             updateStatus("Nextcloud is running at $ipDisplay")
@@ -557,10 +574,7 @@ class NextcloudServerService : Service() {
             Thread.sleep(600)
 
             // Update SharedPreferences with the newly applied port
-            getSharedPreferences("NextcloudPrefs", MODE_PRIVATE)
-                .edit()
-                .putInt("server_port", newPort)
-                .apply()
+            AppPreferences(this).serverPort = newPort
 
             val ncManager = NextcloudManager(this@NextcloudServerService)
             ncManager.ensureAppStoreAndAppsConfig()

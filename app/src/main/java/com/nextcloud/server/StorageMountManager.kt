@@ -68,13 +68,13 @@ class StorageMountManager(private val context: Context) {
     )
 
     fun isStorageEnabled(storageId: String): Boolean {
-        val prefs = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
+        val prefs = AppPreferences(context).sharedPreferences
         val baseId = storageId.removeSuffix("_media").removeSuffix("_root").removeSuffix("_uploads")
         return prefs.getBoolean("ext_storage_enabled_$baseId", true)
     }
 
     fun setStorageEnabled(storageId: String, enabled: Boolean) {
-        val prefs = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
+        val prefs = AppPreferences(context).sharedPreferences
         val baseId = storageId.removeSuffix("_media").removeSuffix("_root").removeSuffix("_uploads")
         prefs.edit().putBoolean("ext_storage_enabled_$baseId", enabled).apply()
         scheduleDebouncedSync()
@@ -303,8 +303,7 @@ class StorageMountManager(private val context: Context) {
             if (anyUnmounted) {
                 // Purge file cache for detached or disabled mounts so Nextcloud Web UI immediately removes the folder!
                 executeOcc("files:cleanup")
-                val adminUser = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
-                    .getString("admin_user", "admin") ?: "admin"
+                val adminUser = AppPreferences(context).adminUser
                 executeOcc("files:scan", "--path=/$adminUser/files")
                 if (adminUser != "admin") {
                     executeOcc("files:scan", "--path=/admin/files")
@@ -691,8 +690,7 @@ class StorageMountManager(private val context: Context) {
     private fun scanNextcloudMount(mountPoint: String) {
         val cleanPoint = mountPoint.trimStart('/')
         Log.i(TAG, "Triggering Nextcloud file scan for mount point: $cleanPoint")
-        val adminUser = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
-            .getString("admin_user", "admin") ?: "admin"
+        val adminUser = AppPreferences(context).adminUser
         val out = executeOcc("files:scan", "--path=/$adminUser/files/$cleanPoint")
         Log.d(TAG, "files:scan output: $out")
     }

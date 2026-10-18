@@ -365,7 +365,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        prefs = getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
+        prefs = AppPreferences(this).sharedPreferences
         applySavedTheme()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
