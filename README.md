@@ -16,7 +16,7 @@ Pre-built packages are available on [GitHub Releases](https://github.com/roufswe
 
 * **Standard Compressed Package (ZIP)**:
   * **File**: `nextcloud-server-v1.0.0-arm64-v8a.apk.zip` (**423.4 MB**)
-  * **SHA-256**: `1D9B43F2E9B2C2E5CD90E1F46AD9FE04F91B0AC8BF25BBC3F2EC3E9E76A12C2F`
+  * **SHA-256**: `A0EB178E43579EB89215AA8DC0CF53CE361515ECCD42D8D45B97C9245B14388B`
   * **Installation**: Download and unzip the archive with any file manager, then tap the extracted `.apk` to install.
 * **Target Architecture**: ARM64 (`arm64-v8a` / aarch64)
 * **Minimum Android**: Android 8.0 (API 26)+
