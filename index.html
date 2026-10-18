@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nextcloud Server for Android — Self-Hosted Private Cloud on ARM64</title>
+    <title>Nextcloud Server for Android — Self-Hosted Private Cloud on ARM64 (No Root)</title>
     
     <!-- Primary SEO Meta Tags -->
-    <meta name="title" content="Nextcloud Server for Android — Self-Hosted Private Cloud on ARM64">
-    <meta name="description" content="Turn any Android device into a standalone Nextcloud server without root. Native ARM64 stack with Nginx, PHP-FPM, SQLite, WebDAV, external MicroSD/USB drive support, and automatic mobile camera sync.">
-    <meta name="keywords" content="Nextcloud Server Android, Nextcloud APK, Self-Hosted Cloud Phone, ARM64 Nextcloud, MicroSD Nextcloud, WebDAV Server Android, Local Cloud Storage, Private Cloud Android, Termux alternative, No Root Server">
+    <meta name="title" content="Nextcloud Server for Android — Self-Hosted Private Cloud on ARM64 (No Root)">
+    <meta name="description" content="Turn any Android phone into a 24/7 standalone Nextcloud private cloud server without root. Native ARM64 stack featuring Nginx, PHP-FPM, SQLite, WebDAV, MicroSD & USB drive hot-plug storage, and automatic photo camera sync.">
+    <meta name="keywords" content="Nextcloud Server Android, Nextcloud APK, Nextcloud Server APK Download, setup Nextcloud on Android, run Nextcloud on old phone, turn Android phone into Nextcloud server, Nextcloud Android without root, Nextcloud home server Android, Nextcloud ARM64 v8a, Nextcloud external storage MicroSD Android, Android private cloud NAS, self-hosted cloud on phone, Nextcloud Termux alternative, pocket Nextcloud server, local cloud storage Android, WebDAV server Android, Nextcloud Hub Android">
     <meta name="author" content="Abdur Rouf">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
     <link rel="canonical" href="https://roufsweb.github.io/nextcloud-server-android/">
@@ -19,8 +19,8 @@
     <meta property="og:locale" content="en_US">
     <meta property="og:url" content="https://roufsweb.github.io/nextcloud-server-android/">
     <meta property="og:site_name" content="Nextcloud Server Android">
-    <meta property="og:title" content="Nextcloud Server for Android — Self-Hosted Private Cloud on ARM64">
-    <meta property="og:description" content="Deploy a fully functional, native Nextcloud server directly on Android. Nginx, PHP-FPM, SQLite, and MicroSD card expansion with zero root required.">
+    <meta property="og:title" content="Nextcloud Server for Android — Self-Hosted Private Cloud on ARM64 (No Root)">
+    <meta property="og:description" content="Deploy a fully functional, native Nextcloud server directly on Android. Nginx, PHP-FPM, SQLite, WebDAV, and MicroSD card expansion with zero root required.">
     <meta property="og:image" content="https://raw.githubusercontent.com/roufsweb/nextcloud-server-android/main/docs/screenshots/01_dashboard.png">
     <meta property="og:image:width" content="1080">
     <meta property="og:image:height" content="2220">
@@ -38,7 +38,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-    <!-- JSON-LD Structured Data: SoftwareApplication & FAQPage -->
+    <!-- JSON-LD Structured Data: SoftwareApplication, FAQPage & HowTo -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -64,6 +64,34 @@
             "url": "https://github.com/roufsweb"
           },
           "license": "https://www.gnu.org/licenses/gpl-3.0.html"
+        },
+        {
+          "@type": "HowTo",
+          "name": "How to Set Up a Nextcloud Server on Android",
+          "description": "Step-by-step guide to turn any Android phone or tablet into a standalone self-hosted Nextcloud server with MicroSD storage expansion and zero root access.",
+          "step": [
+            {
+              "@type": "HowToStep",
+              "name": "Download the Server Package",
+              "text": "Download the nextcloud-server-v1.0.0-arm64-v8a.apk.zip package from GitHub Releases and unzip it on your Android device.",
+              "url": "https://roufsweb.github.io/nextcloud-server-android/#download"
+            },
+            {
+              "@type": "HowToStep",
+              "name": "Install the APK and Grant Permissions",
+              "text": "Tap the extracted APK to install it, open Nextcloud Server, and grant external storage permissions."
+            },
+            {
+              "@type": "HowToStep",
+              "name": "Start the Server",
+              "text": "Tap 'Start Server'. The application unpacks the native Linux stack (Nginx, PHP-FPM, SQLite, Nextcloud Core) and starts background daemons."
+            },
+            {
+              "@type": "HowToStep",
+              "name": "Log In and Sync Your Files",
+              "text": "Open your local server IP (e.g., http://192.168.1.150:8000) in your browser or connect the official Nextcloud mobile and desktop clients to start automatic camera uploads."
+            }
+          ]
         },
         {
           "@type": "FAQPage",
