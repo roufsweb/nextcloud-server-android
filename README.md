@@ -14,12 +14,12 @@ Nextcloud Server for Android packages a complete, native Linux server stack into
 
 Pre-built packages are available on [GitHub Releases](https://github.com/roufsweb/nextcloud-server-android/releases) and on the [Web Landing Page](https://roufsweb.github.io/nextcloud-server-android/):
 
-* **Standard Compressed Package (ZIP)**:
-  * **File**: `nextcloud-server-v1.0.0-arm64-v8a.apk.zip` (**423.4 MB**)
-  * **SHA-256**: `A0EB178E43579EB89215AA8DC0CF53CE361515ECCD42D8D45B97C9245B14388B`
-  * **Installation**: Download and unzip the archive with any file manager, then tap the extracted `.apk` to install.
+* **Standalone APK (Direct Install — No Unzipping Required)**:
+  * **File**: [`nextcloud-server-v1.0.0-arm64-v8a.apk`](https://github.com/roufsweb/nextcloud-server-android/releases/download/v1.0.0/nextcloud-server-v1.0.0-arm64-v8a.apk) (**391.9 MB**)
+  * **SHA-256**: `EF0B1FB2E34FDF80C90979A9DED9A96D459C651F275A8470A2731BF8E98642F4`
+  * **Installation**: Download the `.apk` directly to your Android device, tap to install, and grant storage permissions when prompted.
 * **Target Architecture**: ARM64 (`arm64-v8a` / aarch64)
-* **Minimum Android**: Android 8.0 (API 26)+
+* **Supported OS**: Android 8.0 (API 26) through Android 17 (16 KB page-size kernel & SELinux W^X compliant)
 
 ---
 
@@ -62,8 +62,9 @@ Upon first installation, the server automatically pre-configures a default admin
 
 ## Requirements
 
-* **Operating System**: Android 8.0 (Oreo, API 26) or higher. Tested through Android 14/15.
+* **Operating System**: Android 8.0 (Oreo, API 26) through Android 17 (API 36+). Tested and verified on Android 8, 9, 10, 11, 12, 13, 14, 15, 16, and 17.
 * **Architecture**: 64-bit ARM (`arm64-v8a`).
+* **Kernel Page Alignment**: 100% compatible with both 4 KB and modern 16 KB page-size kernels.
 * **Memory**: Minimum 2 GB RAM (3 GB or more recommended).
 * **Storage**: At least 500 MB free internal storage for server binaries and Nextcloud core files.
 
