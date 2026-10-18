@@ -57,28 +57,59 @@ object AssetHelper {
         }
     }
 
-    fun unzipAsset(context: Context, assetPath: String, targetDir: String) {
+    fun unzipAsset(
+        context: Context,
+        assetPath: String,
+        targetDir: String,
+        totalEntries: Int = 33992,
+        onProgress: ((percent: Int) -> Unit)? = null
+    ) {
         val targetFileDir = File(targetDir)
         if (!targetFileDir.exists()) targetFileDir.mkdirs()
 
-        context.assets.open(assetPath).use { input ->
-            ZipInputStream(input).use { zip ->
-                var entry = zip.nextEntry
-                while (entry != null) {
-                    val file = File(targetDir, entry.name)
-                    if (entry.isDirectory) {
-                        file.mkdirs()
-                    } else {
-                        file.parentFile?.mkdirs()
-                        FileOutputStream(file).use { output ->
-                            zip.copyTo(output)
+        val buffer = ByteArray(65536)
+        val createdDirs = HashSet<String>()
+        var entryCount = 0
+        var lastReportedPct = -1
+
+        context.assets.open(assetPath).use { rawInput ->
+            java.io.BufferedInputStream(rawInput, 65536).use { bufferedInput ->
+                ZipInputStream(bufferedInput).use { zip ->
+                    var entry = zip.nextEntry
+                    while (entry != null) {
+                        entryCount++
+                        val file = File(targetDir, entry.name)
+                        if (entry.isDirectory) {
+                            if (createdDirs.add(file.absolutePath)) {
+                                file.mkdirs()
+                            }
+                        } else {
+                            val parent = file.parentFile
+                            if (parent != null && createdDirs.add(parent.absolutePath)) {
+                                parent.mkdirs()
+                            }
+                            java.io.BufferedOutputStream(FileOutputStream(file), 65536).use { output ->
+                                var bytesRead: Int
+                                while (zip.read(buffer).also { bytesRead = it } != -1) {
+                                    output.write(buffer, 0, bytesRead)
+                                }
+                            }
                         }
+                        zip.closeEntry()
+
+                        if (onProgress != null && entryCount % 350 == 0) {
+                            val pct = ((entryCount * 100) / totalEntries).coerceIn(0, 100)
+                            if (pct != lastReportedPct) {
+                                lastReportedPct = pct
+                                onProgress(pct)
+                            }
+                        }
+                        entry = zip.nextEntry
                     }
-                    zip.closeEntry()
-                    entry = zip.nextEntry
                 }
             }
         }
+        onProgress?.invoke(100)
     }
 
     fun makeExecutable(filePath: String) {

@@ -30,8 +30,25 @@ class NextcloudManager(private val context: Context) {
     private val nextcloudDir: File = File(filesDir, "nextcloud")
     private val configPhp: File = File(nextcloudDir, "config/config.php")
 
+    fun isReadyForOcc(isInstalling: Boolean = false): Boolean {
+        val phpBin = File(filesDir, "bin/php")
+        val occ = File(filesDir, "nextcloud/occ")
+        val consolePhp = File(filesDir, "nextcloud/console.php")
+        val configPhp = File(filesDir, "nextcloud/config/config.php")
+
+        if (!phpBin.exists() || !occ.exists() || !consolePhp.exists()) {
+            return false
+        }
+        if (!isInstalling && !configPhp.exists()) {
+            return false
+        }
+        return true
+    }
+
     fun isInstalled(): Boolean {
         if (!configPhp.exists()) return false
+        if (!File(nextcloudDir, "console.php").exists()) return false
+        if (!File(nextcloudDir, "version.php").exists()) return false
         val output = executeOcc("status")
         return output.contains("installed: true", ignoreCase = true)
     }
@@ -44,11 +61,14 @@ class NextcloudManager(private val context: Context) {
         adminUser: String,
         adminPass: String,
         dataDir: String,
-        onProgress: ((String) -> Unit)? = null
+        onProgress: ((stage: String, percent: Int) -> Unit)? = null
     ): Boolean {
-        onProgress?.invoke("Extracting Nextcloud core...")
-        if (!nextcloudDir.exists()) {
-            AssetHelper.unzipAsset(context, "nextcloud.zip", filesDir.absolutePath)
+        onProgress?.invoke("Extracting Nextcloud core...", 5)
+        if (!File(nextcloudDir, "version.php").exists()) {
+            AssetHelper.unzipAsset(context, "nextcloud.zip", filesDir.absolutePath, 33992) { zipPct ->
+                val overall = 5 + ((zipPct * 65) / 100)
+                onProgress?.invoke("Extracting Nextcloud core ($zipPct%)...", overall)
+            }
         }
 
         val targetDataDir = File(dataDir)
@@ -59,7 +79,7 @@ class NextcloudManager(private val context: Context) {
         // Create standard verification markers
         ensureNcMarkers(targetDataDir)
 
-        onProgress?.invoke("Pre-installing Nextcloud SQLite database...")
+        onProgress?.invoke("Initializing Nextcloud SQLite database...", 75)
         val output = executeOcc(
             "maintenance:install",
             "--database=sqlite",
@@ -73,7 +93,13 @@ class NextcloudManager(private val context: Context) {
         val success = output.contains("Nextcloud was successfully installed", ignoreCase = true) || isInstalled()
 
         if (success) {
-            onProgress?.invoke("Configuring network & trusted domains...")
+            onProgress?.invoke("Configuring network & productivity apps...", 90)
+            try {
+                executeOcc("config:app:set", "password_policy", "enforce_have_i_been_pwned", "--value=0")
+                executeOcc("config:app:set", "password_policy", "enforce_common_passwords", "--value=0")
+                executeOcc("config:app:set", "password_policy", "min_length", "--value=4")
+            } catch (_: Exception) {}
+
             // Automatically add localhost, 127.0.0.1, and current Wi-Fi LAN IP
             addTrustedDomain("localhost")
             addTrustedDomain("127.0.0.1")
@@ -89,6 +115,7 @@ class NextcloudManager(private val context: Context) {
             executeOcc("config:system:set", "default_phone_region", "--value=US")
             val currentPort = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE).getInt("server_port", 8000)
             executeOcc("config:system:set", "overwrite.cli.url", "--value=http://localhost:$currentPort")
+            onProgress?.invoke("Nextcloud installation completed!", 100)
         }
 
         return success
@@ -325,27 +352,55 @@ ${'$'}CONFIG = [
         return !out.contains("User does not exist", ignoreCase = true) && out.contains("user_id:", ignoreCase = true)
     }
 
-    fun createAdminUser(username: String, pass: String): Boolean {
+    fun createAdminUser(username: String, pass: String): Pair<Boolean, String> {
+        if (!isReadyForOcc()) return Pair(false, "Nextcloud server is not installed yet")
+        try {
+            executeOcc("config:app:set", "password_policy", "enforce_have_i_been_pwned", "--value=0")
+            executeOcc("config:app:set", "password_policy", "enforce_common_passwords", "--value=0")
+            executeOcc("config:app:set", "password_policy", "min_length", "--value=4")
+        } catch (_: Exception) {}
+
         val out = executeOcc(
             "user:add",
             "--password-from-env",
             "--group=admin",
             username.trim(),
-            envVars = mapOf("OC_PASS" to pass)
+            envVars = mapOf("OC_PASS" to pass, "NC_PASS" to pass)
         )
         Log.i(TAG, "Create admin user $username: $out")
-        return out.contains("The user \"$username\" was created successfully", ignoreCase = true) || isUserExists(username)
+        val success = out.contains("The user \"$username\" was created successfully", ignoreCase = true) || isUserExists(username)
+        if (success) {
+            return Pair(true, "")
+        }
+        val err = out.lines().firstOrNull {
+            it.contains("password", ignoreCase = true) || it.contains("error", ignoreCase = true) || it.contains("failed", ignoreCase = true)
+        } ?: out.trim()
+        return Pair(false, err)
     }
 
-    fun resetAdminPassword(adminUser: String, newPass: String): Boolean {
+    fun resetAdminPassword(adminUser: String, newPass: String): Pair<Boolean, String> {
+        if (!isReadyForOcc()) return Pair(false, "Nextcloud server is not installed yet")
+        try {
+            executeOcc("config:app:set", "password_policy", "enforce_have_i_been_pwned", "--value=0")
+            executeOcc("config:app:set", "password_policy", "enforce_common_passwords", "--value=0")
+            executeOcc("config:app:set", "password_policy", "min_length", "--value=4")
+        } catch (_: Exception) {}
+
         val output = executeOcc(
             "user:resetpassword",
             "--password-from-env",
             adminUser.trim(),
-            envVars = mapOf("OC_PASS" to newPass)
+            envVars = mapOf("OC_PASS" to newPass, "NC_PASS" to newPass)
         )
         Log.i(TAG, "Reset password output: $output")
-        return output.contains("Successfully reset password", ignoreCase = true)
+        val success = output.contains("Successfully reset password", ignoreCase = true)
+        if (success) {
+            return Pair(true, "")
+        }
+        val err = output.lines().firstOrNull {
+            it.contains("password", ignoreCase = true) || it.contains("error", ignoreCase = true) || it.contains("failed", ignoreCase = true)
+        } ?: output.trim()
+        return Pair(false, err)
     }
 
     fun getTrustedDomains(): List<String> {
@@ -364,8 +419,21 @@ ${'$'}CONFIG = [
                 Log.d(TAG, "Error reading config.php for trusted domains: ${e.message}")
             }
         }
+        if (!isReadyForOcc()) {
+            val list = mutableListOf("localhost", "127.0.0.1")
+            getWifiIpAddress()?.let { list.add(it) }
+            return list
+        }
         val output = executeOcc("config:system:get", "trusted_domains")
-        return output.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val list = output.lines().map { it.trim() }.filter {
+            it.isNotEmpty() &&
+            !it.startsWith("Warning", ignoreCase = true) &&
+            !it.startsWith("Fatal", ignoreCase = true) &&
+            !it.startsWith("Error", ignoreCase = true) &&
+            !it.contains("Stack trace", ignoreCase = true) &&
+            !it.contains("require_once", ignoreCase = true)
+        }
+        return if (list.isNotEmpty()) list else listOf("localhost", "127.0.0.1")
     }
 
     fun cleanDomainInput(raw: String): String {
@@ -419,14 +487,27 @@ ${'$'}CONFIG = [
                 val match = Regex("'datadirectory'\\s*=>\\s*['\"]([^'\"]+)['\"]").find(text)
                 if (match != null) {
                     val path = match.groupValues[1].trim()
-                    if (path.isNotEmpty()) return path
+                    if (path.isNotEmpty() && !path.startsWith("Warning", ignoreCase = true) && !path.startsWith("Fatal", ignoreCase = true)) return path
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "Error reading config.php for datadirectory: ${e.message}")
             }
         }
+        val prefs = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE)
+        val savedDataDir = prefs.getString("data_dir", null)
+        if (!savedDataDir.isNullOrBlank()) {
+            return savedDataDir
+        }
+        if (!isReadyForOcc()) {
+            return File(nextcloudDir, "data").absolutePath
+        }
         val output = executeOcc("config:system:get", "datadirectory").trim()
-        if (output.isNotEmpty() && !output.startsWith("Error")) {
+        if (output.isNotEmpty() &&
+            !output.startsWith("Error", ignoreCase = true) &&
+            !output.startsWith("Warning", ignoreCase = true) &&
+            !output.startsWith("Fatal", ignoreCase = true) &&
+            !output.contains("require_once", ignoreCase = true)
+        ) {
             return output
         }
         return File(nextcloudDir, "data").absolutePath
@@ -672,8 +753,9 @@ ${'$'}CONFIG = [
         val tmpDir = File(filesDir, "tmp").apply { mkdirs() }
         val opensslCnf = File(filesDir, "conf/openssl.cnf")
 
-        if (!File(phpBin).exists() || !File(occ).exists()) {
-            Log.w(TAG, "PHP or occ not ready for command: ${args.joinToString(" ")}")
+        val isInstalling = args.firstOrNull() == "maintenance:install"
+        if (!isReadyForOcc(isInstalling)) {
+            Log.w(TAG, "PHP or occ/console.php not ready for command: ${args.joinToString(" ")}")
             return ""
         }
 

@@ -52,14 +52,19 @@ class SdCardAccessDialog(
         messageView.text = "To allow Nextcloud to read and write files directly on this storage drive, tap 'Grant Access' below.\n\nIn the system file picker that appears, simply tap 'USE THIS FOLDER' or 'ALLOW' at the bottom.\n\nThis is a one-time setup that persists permanently across reboots."
 
         grantButton.setOnClickListener {
+            markDialogShown(context, cleanUuid)
             dialog.dismiss()
             onGrantClicked(cleanUuid)
         }
 
         skipButton.setOnClickListener {
-            dialog.dismiss()
             markDialogShown(context, cleanUuid)
+            dialog.dismiss()
             onSkipped?.invoke(cleanUuid)
+        }
+
+        dialog.setOnDismissListener {
+            markDialogShown(context, cleanUuid)
         }
 
         dialog.show()

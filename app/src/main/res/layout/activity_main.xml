@@ -219,6 +219,51 @@
                                 android:contentDescription="Copy URL" />
                         </LinearLayout>
 
+                        <!-- Initial Setup / Core Extraction Progress Container -->
+                        <LinearLayout
+                            android:id="@+id/setupProgressContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:layout_marginBottom="14dp"
+                            android:visibility="gone">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                android:gravity="center_vertical"
+                                android:layout_marginBottom="6dp">
+
+                                <TextView
+                                    android:id="@+id/setupStatusText"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:text="Setting up Nextcloud core..."
+                                    android:textSize="12sp"
+                                    android:fontFamily="sans-serif-medium"
+                                    android:textColor="@color/m3_on_surface_variant" />
+
+                                <TextView
+                                    android:id="@+id/setupPercentText"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="0%"
+                                    android:textSize="12sp"
+                                    android:textStyle="bold"
+                                    android:textColor="@color/m3_primary" />
+                            </LinearLayout>
+
+                            <com.google.android.material.progressindicator.LinearProgressIndicator
+                                android:id="@+id/setupProgressBar"
+                                android:layout_width="match_parent"
+                                android:layout_height="6dp"
+                                app:trackCornerRadius="3dp"
+                                app:indicatorColor="@color/m3_primary"
+                                app:trackColor="@color/m3_surface_container_highest" />
+                        </LinearLayout>
+
                         <!-- Unified Server Action Button (Start / Stop) -->
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/serverActionButton"

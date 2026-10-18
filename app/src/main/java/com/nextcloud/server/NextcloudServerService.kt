@@ -34,6 +34,7 @@ class NextcloudServerService : Service() {
         const val ACTION_PORT_PROGRESS = "com.nextcloud.server.PORT_PROGRESS"
         const val ACTION_TOGGLE_WAKELOCK = "com.nextcloud.server.TOGGLE_WAKELOCK"
         const val ACTION_SAF_GRANTED = "com.nextcloud.server.SAF_GRANTED"
+        const val ACTION_SETUP_PROGRESS = "com.nextcloud.server.SETUP_PROGRESS"
         @Volatile var isServerRunning = false
         @Volatile var lastStatus = "Stopped"
         @Volatile var isMigrationRunning = false
@@ -42,6 +43,9 @@ class NextcloudServerService : Service() {
         @Volatile var isPortChangeRunning = false
         @Volatile var lastPortChangeStatus = ""
         @Volatile var lastPortChangePercent = 0
+        @Volatile var isSetupRunning = false
+        @Volatile var lastSetupStage = ""
+        @Volatile var lastSetupPercent = 0
     }
 
     private var storageMountManager: StorageMountManager? = null
@@ -181,10 +185,16 @@ class NextcloudServerService : Service() {
             val dataDir = prefs.getString("data_dir", File(nextcloudDir, "data").absolutePath)
                 ?: File(nextcloudDir, "data").absolutePath
 
-            updateStatus("Pre-installing Nextcloud server...")
-            nextcloudManager.autoInstall(adminUser, adminPass, dataDir) { stage ->
+            broadcastSetupProgress(true, "Preparing server setup...", 2, false)
+            ensureForeground("Setting up Nextcloud core (2%)...")
+            updateStatus("Setting up Nextcloud core...")
+
+            val success = nextcloudManager.autoInstall(adminUser, adminPass, dataDir) { stage, percent ->
+                broadcastSetupProgress(true, stage, percent, false)
+                ensureForeground("$stage ($percent%)")
                 updateStatus(stage)
             }
+            broadcastSetupProgress(false, if (success) "Setup completed!" else "Setup failed", 100, success)
         } else {
             // Ensure current Wi-Fi LAN IP is in trusted domains
             nextcloudManager.getWifiIpAddress()?.let { ip ->
@@ -566,6 +576,25 @@ class NextcloudServerService : Service() {
             putExtra("status", status)
             putExtra("percent", percent)
             putExtra("port", newPort)
+            putExtra("success", success)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun broadcastSetupProgress(
+        isRunning: Boolean,
+        stage: String,
+        percent: Int,
+        success: Boolean
+    ) {
+        isSetupRunning = isRunning
+        lastSetupStage = stage
+        lastSetupPercent = percent
+
+        val intent = Intent(ACTION_SETUP_PROGRESS).apply {
+            putExtra("is_running", isRunning)
+            putExtra("stage", stage)
+            putExtra("percent", percent)
             putExtra("success", success)
         }
         sendBroadcast(intent)
