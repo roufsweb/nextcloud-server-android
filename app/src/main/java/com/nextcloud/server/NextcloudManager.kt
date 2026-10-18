@@ -79,7 +79,7 @@ class NextcloudManager(private val context: Context) {
         // Create standard verification markers
         ensureNcMarkers(targetDataDir)
 
-        onProgress?.invoke("Initializing Nextcloud SQLite database...", 75)
+        onProgress?.invoke("Initializing Nextcloud SQLite database...", 72)
         val output = executeOcc(
             "maintenance:install",
             "--database=sqlite",
@@ -93,21 +93,26 @@ class NextcloudManager(private val context: Context) {
         val success = output.contains("Nextcloud was successfully installed", ignoreCase = true) || isInstalled()
 
         if (success) {
-            onProgress?.invoke("Configuring network & productivity apps...", 90)
+            onProgress?.invoke("Configuring password policies...", 80)
             try {
                 executeOcc("config:app:set", "password_policy", "enforce_have_i_been_pwned", "--value=0")
                 executeOcc("config:app:set", "password_policy", "enforce_common_passwords", "--value=0")
                 executeOcc("config:app:set", "password_policy", "min_length", "--value=4")
             } catch (_: Exception) {}
 
+            onProgress?.invoke("Configuring trusted domains...", 83)
             // Automatically add localhost, 127.0.0.1, and current Wi-Fi LAN IP
             addTrustedDomain("localhost")
             addTrustedDomain("127.0.0.1")
             getWifiIpAddress()?.let { ip ->
                 addTrustedDomain(ip)
             }
-            ensureAppStoreAndAppsConfig()
+
+            onProgress?.invoke("Enabling productivity apps...", 86)
             ensureCoreAppsEnabled()
+
+            onProgress?.invoke("Finalizing server parameters...", 90)
+            ensureAppStoreAndAppsConfig()
             executeOcc("config:system:set", "check_data_directory_permissions", "--value=false", "--type=boolean")
             executeOcc("config:system:set", "allow_local_remote_servers", "--value=true", "--type=boolean")
             executeOcc("config:system:set", "tempdirectory", "--value=" + File(filesDir, "tmp").apply { mkdirs() }.absolutePath)
@@ -115,7 +120,7 @@ class NextcloudManager(private val context: Context) {
             executeOcc("config:system:set", "default_phone_region", "--value=US")
             val currentPort = context.getSharedPreferences("NextcloudPrefs", Context.MODE_PRIVATE).getInt("server_port", 8000)
             executeOcc("config:system:set", "overwrite.cli.url", "--value=http://localhost:$currentPort")
-            onProgress?.invoke("Nextcloud installation completed!", 100)
+            onProgress?.invoke("Nextcloud core setup ready", 92)
         }
 
         return success
@@ -123,20 +128,26 @@ class NextcloudManager(private val context: Context) {
 
     /**
      * Automatically ensures all pre-bundled productivity apps (files_external,
-     * calendar, contacts, notes, deck) are enabled out-of-the-box.
+     * calendar, contacts, notes, deck) are enabled out-of-the-box in a single batch OCC call.
      */
     fun ensureCoreAppsEnabled() {
         val coreApps = listOf("files_external", "calendar", "contacts", "notes", "deck")
+        val appsToEnable = mutableListOf<String>()
         for (app in coreApps) {
             val appInApps = File(File(nextcloudDir, "apps"), app).exists()
             val appInCustom = File(File(nextcloudDir, "custom_apps"), app).exists()
             if (appInApps || appInCustom) {
-                try {
-                    val out = executeOcc("app:enable", app)
-                    Log.d(TAG, "Ensure app $app enabled: $out")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not enable core app $app", e)
-                }
+                appsToEnable.add(app)
+            }
+        }
+        if (appsToEnable.isNotEmpty()) {
+            try {
+                val args = mutableListOf("app:enable")
+                args.addAll(appsToEnable)
+                val out = executeOcc(*args.toTypedArray())
+                Log.d(TAG, "Enabled apps [${appsToEnable.joinToString()}]: $out")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not enable core apps in batch", e)
             }
         }
         ensureQrLoginCompatibility()

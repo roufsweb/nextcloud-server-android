@@ -103,8 +103,25 @@ class NextcloudServerService : Service() {
         
         executor.execute {
             try {
+                val ncManager = NextcloudManager(this@NextcloudServerService)
+                val isFirstInstall = !ncManager.isInstalled()
+                if (isFirstInstall) {
+                    broadcastSetupProgress(true, "Preparing server setup...", 2, false)
+                    updateSetupNotification("Preparing server setup", 2)
+                }
+
                 prepareBinaries(port)
+
+                if (isFirstInstall) {
+                    broadcastSetupProgress(true, "Starting PHP-FPM service...", 95, false)
+                    updateSetupNotification("Starting PHP-FPM service", 95)
+                }
                 startPhpFpm()
+
+                if (isFirstInstall) {
+                    broadcastSetupProgress(true, "Starting Nginx web server...", 98, false)
+                    updateSetupNotification("Starting Nginx web server", 98)
+                }
                 startNginx()
 
                 // Initialize SAF & upload relay service
@@ -112,7 +129,7 @@ class NextcloudServerService : Service() {
                 uploadRelayService = UploadRelayService(
                     this@NextcloudServerService,
                     safManager!!,
-                    NextcloudManager(this@NextcloudServerService)
+                    ncManager
                 )
 
                 // Initialize hot-plug external storage manager
@@ -126,11 +143,16 @@ class NextcloudServerService : Service() {
                     uploadRelayService?.startWatching(grantedUuids)
                 }
 
-                val wifiIp = NextcloudManager(this@NextcloudServerService).getWifiIpAddress()
+                val wifiIp = ncManager.getWifiIpAddress()
                 val ipDisplay = if (wifiIp != null) "http://$wifiIp:$port" else "http://localhost:$port"
+
+                if (isFirstInstall) {
+                    broadcastSetupProgress(false, "Server is ready!", 100, true)
+                }
                 updateStatus("Nextcloud is running at $ipDisplay")
             } catch (e: Exception) {
                 Log.e("NextcloudServer", "Error starting server", e)
+                broadcastSetupProgress(false, "Setup failed: ${e.message}", 0, false)
                 updateStatus("Error starting server: ${e.message}")
             }
         }
@@ -185,16 +207,16 @@ class NextcloudServerService : Service() {
             val dataDir = prefs.getString("data_dir", File(nextcloudDir, "data").absolutePath)
                 ?: File(nextcloudDir, "data").absolutePath
 
-            broadcastSetupProgress(true, "Preparing server setup...", 2, false)
-            ensureForeground("Setting up Nextcloud core (2%)...")
-            updateStatus("Setting up Nextcloud core...")
+            broadcastSetupProgress(true, "Extracting Nextcloud core...", 5, false)
+            updateSetupNotification("Extracting Nextcloud core", 5)
 
             val success = nextcloudManager.autoInstall(adminUser, adminPass, dataDir) { stage, percent ->
                 broadcastSetupProgress(true, stage, percent, false)
-                ensureForeground("$stage ($percent%)")
-                updateStatus(stage)
+                updateSetupNotification(stage, percent)
             }
-            broadcastSetupProgress(false, if (success) "Setup completed!" else "Setup failed", 100, success)
+            if (!success) {
+                throw IOException("Nextcloud initial configuration failed")
+            }
         } else {
             // Ensure current Wi-Fi LAN IP is in trusted domains
             nextcloudManager.getWifiIpAddress()?.let { ip ->
@@ -338,16 +360,47 @@ class NextcloudServerService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private var lastNotifPercent = -1
+    private var lastNotifStage = ""
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+            try {
+                manager.deleteNotificationChannel("NextcloudServerChannel")
+            } catch (_: Exception) {}
+
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
-                "Nextcloud Server Service Channel",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
-            val manager = getSystemService(NotificationManager::class.java)
+                "Nextcloud Server Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Nextcloud background server and setup notifications"
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+            }
             manager.createNotificationChannel(serviceChannel)
         }
+    }
+
+    private fun updateSetupNotification(stage: String, percent: Int) {
+        if (percent == lastNotifPercent && stage == lastNotifStage) return
+        if (percent != 100 && percent - lastNotifPercent < 5 && stage == lastNotifStage) return
+        lastNotifPercent = percent
+        lastNotifStage = stage
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Nextcloud Setup")
+            .setContentText("$stage ($percent%)")
+            .setSmallIcon(R.drawable.ic_nextcloud_logo)
+            .setProgress(100, percent, false)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setOngoing(true)
+            .build()
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(1, notification)
     }
 
     private fun createNotification(content: String): Notification {
@@ -360,6 +413,8 @@ class NextcloudServerService : Service() {
             .setContentTitle("Nextcloud Server")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_nextcloud_logo)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
             .build()
     }
@@ -449,6 +504,8 @@ class NextcloudServerService : Service() {
             .setContentText(stage)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setProgress(100, percent, percent == 0)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setOngoing(true)
             .build()
         val notificationManager = getSystemService(NotificationManager::class.java)
@@ -558,6 +615,8 @@ class NextcloudServerService : Service() {
             .setContentText(stage)
             .setSmallIcon(R.drawable.ic_nextcloud_logo)
             .setProgress(100, percent, false)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setOngoing(true)
             .build()
         val notificationManager = getSystemService(NotificationManager::class.java)

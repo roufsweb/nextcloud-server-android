@@ -319,15 +319,37 @@ class MainActivity : AppCompatActivity() {
                     setupPercentText.text = "$percent%"
                     setupProgressBar.isIndeterminate = false
                     setupProgressBar.progress = percent
+
                     serverActionButton.isEnabled = false
-                    serverActionButton.text = "Setting Up Nextcloud..."
+                    if (stage.contains("extract", ignoreCase = true)) {
+                        serverActionButton.text = "Extracting Nextcloud..."
+                    } else if (stage.contains("database", ignoreCase = true) || stage.contains("sqlite", ignoreCase = true)) {
+                        serverActionButton.text = "Initializing Database..."
+                    } else if (stage.contains("app", ignoreCase = true) || stage.contains("domain", ignoreCase = true) || stage.contains("policy", ignoreCase = true)) {
+                        serverActionButton.text = "Configuring Nextcloud..."
+                    } else {
+                        serverActionButton.text = "Starting Server..."
+                    }
+                    serverActionButton.setIconResource(R.drawable.ic_play_arrow)
+                    serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_primary)
+                    serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_primary))
+                    serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_primary)
                 } else {
                     setupProgressContainer.visibility = View.GONE
-                    serverActionButton.isEnabled = true
                     if (isServerRunning) {
+                        serverActionButton.isEnabled = true
                         serverActionButton.text = "Stop Server"
-                    } else {
+                        serverActionButton.setIconResource(R.drawable.ic_stop)
+                        serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_danger_container)
+                        serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_danger_container))
+                        serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_danger_container)
+                    } else if (!success) {
+                        serverActionButton.isEnabled = true
                         serverActionButton.text = "Start Server"
+                        serverActionButton.setIconResource(R.drawable.ic_play_arrow)
+                        serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_primary)
+                        serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_primary))
+                        serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_primary)
                     }
                     if (success) {
                         refreshStorageAndDomains()
@@ -807,6 +829,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startServer() {
+        if (NextcloudServerService.isSetupRunning) {
+            return
+        }
+
         val portStr = portInput.text.toString().trim()
         val port = portStr.toIntOrNull() ?: 8000
         if (port < 1024 || port > 65535) {
@@ -824,6 +850,16 @@ class MainActivity : AppCompatActivity() {
         val adminUser = adminUserInput.text.toString().trim().ifEmpty { "admin" }
         val adminPass = adminPassInput.text.toString().trim().ifEmpty { "NextcloudAdmin123!" }
         prefs.edit().putString("admin_user", adminUser).putString("admin_pass", adminPass).apply()
+
+        if (!nextcloudManager.isInstalled()) {
+            setupProgressContainer.visibility = View.VISIBLE
+            setupStatusText.text = "Extracting Nextcloud core..."
+            setupPercentText.text = "0%"
+            setupProgressBar.isIndeterminate = false
+            setupProgressBar.progress = 0
+            serverActionButton.isEnabled = false
+            serverActionButton.text = "Extracting Nextcloud..."
+        }
 
         val intent = Intent(this, NextcloudServerService::class.java).apply {
             putExtra("port", port)
@@ -876,6 +912,7 @@ class MainActivity : AppCompatActivity() {
 
         if (status.contains("running", ignoreCase = true) || status.contains("http://", ignoreCase = true)) {
             isServerRunning = true
+            setupProgressContainer.visibility = View.GONE
             statusIndicatorDot.setBackgroundResource(R.drawable.status_dot_running)
 
             val pulse = AlphaAnimation(1.0f, 0.35f).apply {
@@ -919,14 +956,19 @@ class MainActivity : AppCompatActivity() {
             statusBadgeContainer.backgroundTintList = ContextCompat.getColorStateList(this, R.color.status_orange_bg)
             statusText.text = status
 
-            serverActionButton.visibility = View.VISIBLE
-            serverActionButton.isEnabled = false
-            serverActionButton.text = "Starting Server..."
-            serverActionButton.setIconResource(R.drawable.ic_play_arrow)
-            serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this, R.color.m3_primary)
-            serverActionButton.setTextColor(ContextCompat.getColor(this, R.color.m3_on_primary))
-            serverActionButton.iconTint = ContextCompat.getColorStateList(this, R.color.m3_on_primary)
+            if (!NextcloudServerService.isSetupRunning) {
+                serverActionButton.visibility = View.VISIBLE
+                serverActionButton.isEnabled = false
+                serverActionButton.text = "Starting Server..."
+                serverActionButton.setIconResource(R.drawable.ic_play_arrow)
+                serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this, R.color.m3_primary)
+                serverActionButton.setTextColor(ContextCompat.getColor(this, R.color.m3_on_primary))
+                serverActionButton.iconTint = ContextCompat.getColorStateList(this, R.color.m3_on_primary)
+            }
         } else {
+            if (NextcloudServerService.isSetupRunning) {
+                return
+            }
             isServerRunning = false
             statusIndicatorDot.clearAnimation()
             statusIndicatorDot.setBackgroundResource(R.drawable.status_dot_stopped)
@@ -1649,7 +1691,19 @@ class MainActivity : AppCompatActivity() {
             setupProgressBar.isIndeterminate = false
             setupProgressBar.progress = percent
             serverActionButton.isEnabled = false
-            serverActionButton.text = "Setting Up Nextcloud..."
+            if (stage.contains("extract", ignoreCase = true)) {
+                serverActionButton.text = "Extracting Nextcloud..."
+            } else if (stage.contains("database", ignoreCase = true) || stage.contains("sqlite", ignoreCase = true)) {
+                serverActionButton.text = "Initializing Database..."
+            } else if (stage.contains("app", ignoreCase = true) || stage.contains("domain", ignoreCase = true) || stage.contains("policy", ignoreCase = true)) {
+                serverActionButton.text = "Configuring Nextcloud..."
+            } else {
+                serverActionButton.text = "Starting Server..."
+            }
+            serverActionButton.setIconResource(R.drawable.ic_play_arrow)
+            serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this, R.color.m3_primary)
+            serverActionButton.setTextColor(ContextCompat.getColor(this, R.color.m3_on_primary))
+            serverActionButton.iconTint = ContextCompat.getColorStateList(this, R.color.m3_on_primary)
         } else {
             setupProgressContainer.visibility = View.GONE
         }
@@ -1690,7 +1744,9 @@ class MainActivity : AppCompatActivity() {
             portInput.isEnabled = true
         }
 
-        if (NextcloudServerService.isServerRunning) {
+        if (NextcloudServerService.isSetupRunning) {
+            // Already handled above, keep setup UI active
+        } else if (NextcloudServerService.isServerRunning) {
             handleStatusUpdate(NextcloudServerService.lastStatus)
         } else {
             handleStatusUpdate("Stopped")
