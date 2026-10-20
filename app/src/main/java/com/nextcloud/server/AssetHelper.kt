@@ -71,35 +71,39 @@ object AssetHelper {
         val targetFileDir = File(targetDir)
         if (!targetFileDir.exists()) targetFileDir.mkdirs()
 
-        val buffer = ByteArray(65536)
+        val buffer = ByteArray(262144) // 256 KB buffer for high I/O throughput
         val createdDirs = HashSet<String>()
+        markDirsCreated(targetFileDir, createdDirs)
+
         var entryCount = 0
         var lastReportedPct = -1
 
         context.assets.open(assetPath).use { rawInput ->
-            java.io.BufferedInputStream(rawInput, 65536).use { bufferedInput ->
+            java.io.BufferedInputStream(rawInput, 262144).use { bufferedInput ->
                 ZipInputStream(bufferedInput).use { zip ->
                     var entry = zip.nextEntry
                     while (entry != null) {
                         entryCount++
                         val file = File(targetDir, entry.name)
                         if (entry.isDirectory) {
-                            if (!file.exists()) {
-                                file.mkdirs()
+                            if (!createdDirs.contains(file.absolutePath)) {
+                                if (!file.exists()) {
+                                    file.mkdirs()
+                                }
+                                markDirsCreated(file, createdDirs)
                             }
-                            createdDirs.add(file.absolutePath)
                         } else {
                             val parent = file.parentFile
-                            if (parent != null && (!parent.exists() || !createdDirs.contains(parent.absolutePath))) {
+                            if (parent != null && !createdDirs.contains(parent.absolutePath)) {
                                 if (!parent.exists()) {
                                     parent.mkdirs()
                                 }
-                                createdDirs.add(parent.absolutePath)
+                                markDirsCreated(parent, createdDirs)
                             }
                             if (file.exists() && file.isDirectory) {
                                 file.deleteRecursively()
                             }
-                            java.io.BufferedOutputStream(FileOutputStream(file), 65536).use { output ->
+                            java.io.BufferedOutputStream(FileOutputStream(file), 262144).use { output ->
                                 var bytesRead: Int
                                 while (zip.read(buffer).also { bytesRead = it } != -1) {
                                     output.write(buffer, 0, bytesRead)
@@ -121,6 +125,13 @@ object AssetHelper {
             }
         }
         onProgress?.invoke(100)
+    }
+
+    private fun markDirsCreated(dir: File?, createdDirs: HashSet<String>) {
+        var curr: File? = dir
+        while (curr != null && createdDirs.add(curr.absolutePath)) {
+            curr = curr.parentFile
+        }
     }
 
     fun makeExecutable(filePath: String) {

@@ -319,6 +319,7 @@ class MainActivity : AppCompatActivity() {
 
             runOnUiThread {
                 if (isRunning) {
+                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     setupProgressContainer.visibility = View.VISIBLE
                     setupStatusText.text = stage
                     setupPercentText.text = "$percent%"
@@ -340,6 +341,7 @@ class MainActivity : AppCompatActivity() {
                     serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_primary))
                     serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_primary)
                 } else {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     setupProgressContainer.visibility = View.GONE
                     if (isServerRunning) {
                         serverActionButton.isEnabled = true
@@ -1749,6 +1751,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (NextcloudServerService.isSetupRunning) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             setupProgressContainer.visibility = View.VISIBLE
             val stage = NextcloudServerService.lastSetupStage
             val percent = NextcloudServerService.lastSetupPercent
@@ -1771,6 +1774,9 @@ class MainActivity : AppCompatActivity() {
             serverActionButton.setTextColor(ContextCompat.getColor(this, R.color.m3_on_primary))
             serverActionButton.iconTint = ContextCompat.getColorStateList(this, R.color.m3_on_primary)
         } else {
+            if (!NextcloudServerService.isMigrationRunning) {
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
             setupProgressContainer.visibility = View.GONE
         }
 

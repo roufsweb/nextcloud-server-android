@@ -35,11 +35,15 @@ class NextcloudManager(private val context: Context) {
         val occ = File(filesDir, "nextcloud/occ")
         val consolePhp = File(filesDir, "nextcloud/console.php")
         val configPhp = File(filesDir, "nextcloud/config/config.php")
+        val extractionSentinel = File(nextcloudDir, ".extraction_complete")
 
         if (!phpBin.exists() || !occ.exists() || !consolePhp.exists()) {
             return false
         }
         if (!isInstalling && !configPhp.exists()) {
+            return false
+        }
+        if (!extractionSentinel.exists() && !configPhp.exists()) {
             return false
         }
         return true
@@ -72,11 +76,30 @@ class NextcloudManager(private val context: Context) {
         }
 
         onProgress?.invoke("Extracting Nextcloud core...", 5)
-        if (!File(nextcloudDir, "version.php").exists()) {
+        val extractionSentinel = File(nextcloudDir, ".extraction_complete")
+        val hasExistingWorkingConfig = configPhp.exists() && File(nextcloudDir, "version.php").exists()
+
+        if (!extractionSentinel.exists() && !hasExistingWorkingConfig) {
+            if (nextcloudDir.exists()) {
+                Log.w(TAG, "Incomplete or interrupted Nextcloud extraction found. Purging for a clean extract.")
+                nextcloudDir.deleteRecursively()
+            }
             AssetHelper.unzipAsset(context, "nextcloud.zip", filesDir.absolutePath, 33992) { zipPct ->
                 val overall = 5 + ((zipPct * 65) / 100)
                 onProgress?.invoke("Extracting Nextcloud core ($zipPct%)...", overall)
             }
+            if (File(nextcloudDir, "version.php").exists() && File(nextcloudDir, "console.php").exists() && File(nextcloudDir, "occ").exists()) {
+                try {
+                    extractionSentinel.createNewFile()
+                    Log.i(TAG, "Extraction verified 100% complete; sentinel created.")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to write extraction sentinel: ${e.message}")
+                }
+            } else {
+                throw java.io.IOException("Nextcloud extraction incomplete or missing core files.")
+            }
+        } else if (!extractionSentinel.exists() && hasExistingWorkingConfig) {
+            try { extractionSentinel.createNewFile() } catch (_: Exception) {}
         }
 
         val targetDataDir = File(dataDir)
