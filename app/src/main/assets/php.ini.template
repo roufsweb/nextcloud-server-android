@@ -23,9 +23,7 @@ opcache.revalidate_freq=1
 opcache.save_comments=1
 opcache.lockfile_path="{{FILES_DIR}}/tmp"
 
-extension_dir="{{NATIVE_LIB_DIR}}"
-extension=gd.so
-extension=sodium.so
+auto_prepend_file="{{FILES_DIR}}/conf/bootstrap.php"
 
 [openssl]
 openssl.openssl_conf="{{FILES_DIR}}/conf/openssl.cnf"

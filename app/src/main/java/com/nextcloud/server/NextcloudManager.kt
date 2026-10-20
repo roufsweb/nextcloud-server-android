@@ -106,9 +106,11 @@ class NextcloudManager(private val context: Context) {
         if (!targetDataDir.exists()) {
             targetDataDir.mkdirs()
         }
+        val canonicalDataDir = try { targetDataDir.canonicalPath } catch (_: Exception) { targetDataDir.absolutePath }
 
         // Create standard verification markers
         ensureNcMarkers(targetDataDir)
+        ensurePatches()
 
         onProgress?.invoke("Initializing Nextcloud SQLite database...", 72)
         val output = executeOcc(
@@ -117,7 +119,7 @@ class NextcloudManager(private val context: Context) {
             "--database-name=nextcloud",
             "--admin-user=$adminUser",
             "--admin-pass=$adminPass",
-            "--data-dir=$dataDir"
+            "--data-dir=$canonicalDataDir"
         )
         
         Log.i(TAG, "Install output: $output")
@@ -919,6 +921,7 @@ ${'$'}CONFIG = [
             Log.w(TAG, "PHP or occ/console.php not ready for command: ${args.joinToString(" ")}")
             return ""
         }
+        ensurePatches()
 
         val command = mutableListOf(phpBin, "-c", phpIni, occ)
         command.addAll(args)
@@ -932,7 +935,9 @@ ${'$'}CONFIG = [
                 env["OPENSSL_CONF"] = opensslCnf.absolutePath
             }
             env["TMPDIR"] = tmpDir.absolutePath
-            env["LD_LIBRARY_PATH"] = BinaryHelper.getLdLibraryPath(context) + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+            BinaryHelper.getLdLibraryPath(context)?.let { ldPath ->
+                env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+            }
             for ((k, v) in envVars) {
                 env[k] = v
             }
@@ -964,7 +969,9 @@ ${'$'}CONFIG = [
                 env["OPENSSL_CONF"] = opensslCnf.absolutePath
             }
             env["TMPDIR"] = tmpDir.absolutePath
-            env["LD_LIBRARY_PATH"] = BinaryHelper.getLdLibraryPath(context) + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+            BinaryHelper.getLdLibraryPath(context)?.let { ldPath ->
+                env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+            }
 
             val process = pb.start()
             val output = process.inputStream.bufferedReader().readText()
@@ -1002,6 +1009,46 @@ ${'$'}CONFIG = [
             }
         } catch (e: Exception) {
             Log.w(TAG, "Could not clean authtokens: ${e.message}")
+        }
+    }
+
+    private fun ensurePatches() {
+        try {
+            val ocUtil = File(nextcloudDir, "lib/private/legacy/OC_Util.php")
+            if (ocUtil.exists()) {
+                val content = ocUtil.readText()
+                if (!content.contains("// 'gd_info' => 'GD',") && content.contains("'gd_info' => 'GD',")) {
+                    ocUtil.writeText(content.replace("'gd_info' => 'GD',", "// 'gd_info' => 'GD',"))
+                    Log.i(TAG, "Patched OC_Util.php: removed hard requirement for gd_info.")
+                }
+            }
+
+            val localPhp = File(nextcloudDir, "lib/private/Files/Storage/Local.php")
+            if (localPhp.exists()) {
+                val content = localPhp.readText()
+                if (content.contains("\$this->config->getSystemValueBool('localstorage.allowsymlinks', false)")) {
+                    val patched = content.replace(
+                        "\$this->config->getSystemValueBool('localstorage.allowsymlinks', false)",
+                        "\$this->config->getSystemValueBool('localstorage.allowsymlinks', true)"
+                    )
+                    localPhp.writeText(patched)
+                    Log.i(TAG, "Patched Local.php: enabled localstorage.allowsymlinks by default for Android.")
+                }
+            }
+
+            val hasher = File(nextcloudDir, "lib/private/Security/Hasher.php")
+            if (hasher.exists()) {
+                val content = hasher.readText()
+                if (content.contains("PASSWORD_ARGON2ID => 3,")) {
+                    val patched = content
+                        .replace("PASSWORD_ARGON2ID => 3,", "'argon2id' => 3,")
+                        .replace("PASSWORD_ARGON2I => 2,", "'argon2i' => 2,")
+                    hasher.writeText(patched)
+                    Log.i(TAG, "Patched Hasher.php: resolved undefined PASSWORD_ARGON2ID for bcrypt-only PHP runtime.")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to apply core patches: ${e.message}")
         }
     }
 }

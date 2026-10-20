@@ -247,6 +247,7 @@ class StorageMountManager(private val context: Context) {
                     nextcloudManager.setMaintenanceMode(true)
 
                     val intent = Intent("com.nextcloud.server.STATUS_UPDATE").apply {
+                        setPackage(context.packageName)
                         putExtra("status", "Root storage missing (Drive disconnected). Server paused.")
                         putExtra("storage_disconnected", true)
                         putExtra("disconnected_path", currentDataDir)
@@ -289,6 +290,10 @@ class StorageMountManager(private val context: Context) {
                         Log.d(TAG, "Reconciled existing mount: ${storage.displayName} (ID=${existing.id})")
                     }
                 } else {
+                    val targetDir = File(storage.path)
+                    if (!targetDir.exists()) {
+                        try { targetDir.mkdirs() } catch (_: Exception) {}
+                    }
                     Log.i(TAG, "Creating new Nextcloud mount: ${storage.nextcloudMountPoint} -> ${storage.path} (${storage.fsType})")
                     val mountId = addNextcloudMount(storage.nextcloudMountPoint, storage.path)
                     if (mountId != null) {
@@ -311,7 +316,9 @@ class StorageMountManager(private val context: Context) {
             }
 
             // 3. Notify UI of storage changes
-            val changeIntent = Intent(ACTION_STORAGE_CHANGED)
+            val changeIntent = Intent(ACTION_STORAGE_CHANGED).apply {
+                setPackage(context.packageName)
+            }
             context.sendBroadcast(changeIntent)
 
         } catch (e: Exception) {

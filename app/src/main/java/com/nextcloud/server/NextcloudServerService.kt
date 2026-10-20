@@ -47,6 +47,11 @@ class NextcloudServerService : Service() {
         @Volatile var isSetupRunning = false
         @Volatile var lastSetupStage = ""
         @Volatile var lastSetupPercent = 0
+        @Volatile var setupProgressListener: SetupProgressListener? = null
+    }
+
+    fun interface SetupProgressListener {
+        fun onSetupProgress(isRunning: Boolean, stage: String, percent: Int, success: Boolean)
     }
 
     private var storageMountManager: StorageMountManager? = null
@@ -109,6 +114,7 @@ class NextcloudServerService : Service() {
         if (isServerRunning) {
             Log.i("NextcloudServer", "Server is already running, skipping redundant startup.")
             ensureForeground(lastStatus)
+            updateStatus(lastStatus)
             return START_STICKY
         }
 
@@ -297,7 +303,9 @@ class NextcloudServerService : Service() {
             env["OPENSSL_CONF"] = opensslCnf.absolutePath
         }
         env["TMPDIR"] = tmpDir.absolutePath
-        env["LD_LIBRARY_PATH"] = BinaryHelper.getLdLibraryPath(this) + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+        BinaryHelper.getLdLibraryPath(this)?.let { ldPath ->
+            env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+        }
         
         phpProcess = pb.start()
         
@@ -322,7 +330,9 @@ class NextcloudServerService : Service() {
         
         // Set LD_LIBRARY_PATH
         val env = pb.environment()
-        env["LD_LIBRARY_PATH"] = BinaryHelper.getLdLibraryPath(this) + ":" + (env["LD_LIBRARY_PATH"] ?: "")
+        BinaryHelper.getLdLibraryPath(this)?.let { ldPath ->
+            env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+        }
 
         nginxProcess = pb.start()
 
@@ -350,8 +360,10 @@ class NextcloudServerService : Service() {
         isServerRunning = false
         AppPreferences(this).isServerRunning = false
         lastStatus = "Stopped"
-        val intent = Intent("com.nextcloud.server.STATUS_UPDATE")
-        intent.putExtra("status", "Server is stopped")
+        val intent = Intent("com.nextcloud.server.STATUS_UPDATE").apply {
+            setPackage(packageName)
+            putExtra("status", "Server is stopped")
+        }
         sendBroadcast(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -464,8 +476,10 @@ class NextcloudServerService : Service() {
         notificationManager.notify(1, createNotification(content))
         
         // Send broadcast to Activity
-        val intent = Intent("com.nextcloud.server.STATUS_UPDATE")
-        intent.putExtra("status", content)
+        val intent = Intent("com.nextcloud.server.STATUS_UPDATE").apply {
+            setPackage(packageName)
+            putExtra("status", content)
+        }
         sendBroadcast(intent)
     }
 
@@ -563,6 +577,7 @@ class NextcloudServerService : Service() {
         success: Boolean
     ) {
         val intent = Intent(ACTION_MIGRATION_PROGRESS).apply {
+            setPackage(packageName)
             putExtra("is_running", isRunning)
             putExtra("stage", stage)
             putExtra("percent", percent)
@@ -671,6 +686,7 @@ class NextcloudServerService : Service() {
         success: Boolean
     ) {
         val intent = Intent(ACTION_PORT_PROGRESS).apply {
+            setPackage(packageName)
             putExtra("is_running", isRunning)
             putExtra("status", status)
             putExtra("percent", percent)
@@ -690,7 +706,10 @@ class NextcloudServerService : Service() {
         lastSetupStage = stage
         lastSetupPercent = percent
 
+        setupProgressListener?.onSetupProgress(isRunning, stage, percent, success)
+
         val intent = Intent(ACTION_SETUP_PROGRESS).apply {
+            setPackage(packageName)
             putExtra("is_running", isRunning)
             putExtra("stage", stage)
             putExtra("percent", percent)

@@ -310,6 +310,62 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateSetupProgressUi(isRunning: Boolean, stage: String, percent: Int, success: Boolean) {
+        if (isRunning) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            setupProgressContainer.visibility = View.VISIBLE
+            setupStatusText.text = stage
+            setupPercentText.text = "$percent%"
+            setupProgressBar.isIndeterminate = false
+            setupProgressBar.progress = percent
+
+            serverActionButton.isEnabled = false
+            if (stage.contains("extract", ignoreCase = true)) {
+                serverActionButton.text = "Extracting Nextcloud..."
+            } else if (stage.contains("database", ignoreCase = true) || stage.contains("sqlite", ignoreCase = true)) {
+                serverActionButton.text = "Initializing Database..."
+            } else if (stage.contains("app", ignoreCase = true) || stage.contains("domain", ignoreCase = true) || stage.contains("policy", ignoreCase = true)) {
+                serverActionButton.text = "Configuring Nextcloud..."
+            } else {
+                serverActionButton.text = "Starting Server..."
+            }
+            serverActionButton.setIconResource(R.drawable.ic_play_arrow)
+            serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_primary)
+            serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_primary))
+            serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_primary)
+        } else {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            setupProgressContainer.visibility = View.GONE
+            if (isServerRunning) {
+                serverActionButton.isEnabled = true
+                serverActionButton.text = "Stop Server"
+                serverActionButton.setIconResource(R.drawable.ic_stop)
+                serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_danger_container)
+                serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_danger_container))
+                serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_danger_container)
+            } else if (!success) {
+                serverActionButton.isEnabled = true
+                serverActionButton.text = "Start Server"
+                serverActionButton.setIconResource(R.drawable.ic_play_arrow)
+                serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_primary)
+                serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_primary))
+                serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_primary)
+                if (stage.isNotEmpty()) {
+                    Toast.makeText(this@MainActivity, stage, Toast.LENGTH_LONG).show()
+                }
+            }
+            if (success) {
+                refreshStorageAndDomains()
+            }
+        }
+    }
+
+    private val setupProgressListener = NextcloudServerService.SetupProgressListener { isRunning, stage, percent, success ->
+        runOnUiThread {
+            updateSetupProgressUi(isRunning, stage, percent, success)
+        }
+    }
+
     private val setupReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val isRunning = intent?.getBooleanExtra("is_running", false) ?: false
@@ -318,53 +374,7 @@ class MainActivity : AppCompatActivity() {
             val success = intent?.getBooleanExtra("success", false) ?: false
 
             runOnUiThread {
-                if (isRunning) {
-                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    setupProgressContainer.visibility = View.VISIBLE
-                    setupStatusText.text = stage
-                    setupPercentText.text = "$percent%"
-                    setupProgressBar.isIndeterminate = false
-                    setupProgressBar.progress = percent
-
-                    serverActionButton.isEnabled = false
-                    if (stage.contains("extract", ignoreCase = true)) {
-                        serverActionButton.text = "Extracting Nextcloud..."
-                    } else if (stage.contains("database", ignoreCase = true) || stage.contains("sqlite", ignoreCase = true)) {
-                        serverActionButton.text = "Initializing Database..."
-                    } else if (stage.contains("app", ignoreCase = true) || stage.contains("domain", ignoreCase = true) || stage.contains("policy", ignoreCase = true)) {
-                        serverActionButton.text = "Configuring Nextcloud..."
-                    } else {
-                        serverActionButton.text = "Starting Server..."
-                    }
-                    serverActionButton.setIconResource(R.drawable.ic_play_arrow)
-                    serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_primary)
-                    serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_primary))
-                    serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_primary)
-                } else {
-                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    setupProgressContainer.visibility = View.GONE
-                    if (isServerRunning) {
-                        serverActionButton.isEnabled = true
-                        serverActionButton.text = "Stop Server"
-                        serverActionButton.setIconResource(R.drawable.ic_stop)
-                        serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_danger_container)
-                        serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_danger_container))
-                        serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_danger_container)
-                    } else if (!success) {
-                        serverActionButton.isEnabled = true
-                        serverActionButton.text = "Start Server"
-                        serverActionButton.setIconResource(R.drawable.ic_play_arrow)
-                        serverActionButton.backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_primary)
-                        serverActionButton.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_on_primary))
-                        serverActionButton.iconTint = ContextCompat.getColorStateList(this@MainActivity, R.color.m3_on_primary)
-                        if (stage.isNotEmpty()) {
-                            Toast.makeText(this@MainActivity, stage, Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    if (success) {
-                        refreshStorageAndDomains()
-                    }
-                }
+                updateSetupProgressUi(isRunning, stage, percent, success)
             }
         }
     }
@@ -789,6 +799,10 @@ class MainActivity : AppCompatActivity() {
         }
         bottomNavigation.selectedItemId = targetNavId
         switchTab(savedTab)
+
+        if (NextcloudServerService.isServerRunning) {
+            handleStatusUpdate(NextcloudServerService.lastStatus, false)
+        }
     }
 
     private fun requestStoragePermissionsIfNeeded() {
@@ -860,6 +874,73 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // Pre-flight check 1: Target storage directory & permissions
+        val defaultDataDir = File(filesDir, "nextcloud/data").absolutePath
+        val targetDataDir = prefs.getString("data_dir", defaultDataDir) ?: defaultDataDir
+        val isInternal = targetDataDir.startsWith(filesDir.absolutePath) ||
+                         targetDataDir.startsWith("/data/data/$packageName") ||
+                         targetDataDir.startsWith("/data/user/0/$packageName")
+
+        if (!isInternal) {
+            val isStorageGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Environment.isExternalStorageManager()
+            } else {
+                ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            }
+
+            if (!isStorageGranted) {
+                createMaterialAlertDialog()
+                    .setTitle("Storage Permission Required")
+                    .setMessage("Nextcloud is configured to use external storage:\n\n$targetDataDir\n\nAndroid requires storage management permission so Nextcloud can read and write your files.\n\nPlease grant permission, or reset to internal app storage.")
+                    .setPositiveButton("Grant Access") { _, _ ->
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            try {
+                                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                    data = Uri.parse("package:$packageName")
+                                }
+                                manageStorageLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                                manageStorageLauncher.launch(intent)
+                            }
+                        } else {
+                            requestPermissions(arrayOf(
+                                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                            ), 1001)
+                        }
+                    }
+                    .setNegativeButton("Use Internal Storage") { _, _ ->
+                        prefs.edit().putString("data_dir", defaultDataDir).apply()
+                        currentDataDirText.text = defaultDataDir
+                        Toast.makeText(this, "Reset to internal storage. Tap Start Server to run.", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNeutralButton("Cancel", null)
+                    .show()
+                return
+            }
+        }
+
+        // Pre-flight check 2: Storage space validation
+        val freeBytes = filesDir.usableSpace
+        val minRequiredBytes = 1200L * 1024 * 1024 // 1.2 GB
+        if (freeBytes < minRequiredBytes && !nextcloudManager.isInstalled()) {
+            val freeMb = freeBytes / (1024 * 1024)
+            createMaterialAlertDialog()
+                .setTitle("Low Internal Storage")
+                .setMessage("Your device has only ${freeMb} MB free space. Nextcloud requires approximately 1.2 GB of free space to extract and install core files.\n\nPlease free up some storage before proceeding.")
+                .setPositiveButton("Try Anyway") { _, _ ->
+                    launchServerService(port)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+
+        launchServerService(port)
+    }
+
+    private fun launchServerService(port: Int) {
         prefs.edit().putInt("server_port", port).apply()
 
         if (!nextcloudManager.isInstalled()) {
@@ -870,12 +951,12 @@ class MainActivity : AppCompatActivity() {
 
         if (!nextcloudManager.isInstalled()) {
             setupProgressContainer.visibility = View.VISIBLE
-            setupStatusText.text = "Extracting Nextcloud core..."
-            setupPercentText.text = "0%"
+            setupStatusText.text = "Preparing server setup..."
+            setupPercentText.text = "2%"
             setupProgressBar.isIndeterminate = false
-            setupProgressBar.progress = 0
+            setupProgressBar.progress = 2
             serverActionButton.isEnabled = false
-            serverActionButton.text = "Extracting Nextcloud..."
+            serverActionButton.text = "Starting Server..."
         }
 
         val intent = Intent(this, NextcloudServerService::class.java).apply {
@@ -1750,6 +1831,8 @@ class MainActivity : AppCompatActivity() {
             registerReceiver(hardwareStorageReceiver, usbFilter)
         }
 
+        NextcloudServerService.setupProgressListener = setupProgressListener
+
         if (NextcloudServerService.isSetupRunning) {
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             setupProgressContainer.visibility = View.VISIBLE
@@ -1830,6 +1913,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        NextcloudServerService.setupProgressListener = null
         try {
             unregisterReceiver(statusReceiver)
             unregisterReceiver(storageChangeReceiver)
