@@ -402,18 +402,32 @@ class StorageMountManager(private val context: Context) {
                         targetPath = "/storage/$rawUuid"
                     }
 
-                    val rootDir = File(targetPath)
-                    val isRootWritable = isDirectoryWritable(rootDir)
+                    // User-friendly dedicated folder right at the root of the SD card/USB drive: /storage/<UUID>/Nextcloud
+                    val rootNextcloudDir = File(targetPath, "Nextcloud")
+                    val isRootWritable = try {
+                        if (!rootNextcloudDir.exists()) rootNextcloudDir.mkdirs()
+                        isDirectoryWritable(rootNextcloudDir)
+                    } catch (_: Exception) {
+                        false
+                    }
 
-                    // Universal app-scoped guaranteed writable directory on the external drive (Android SDK standard API)
+                    // Fallback to app-scoped directory if root is restricted by legacy OS
                     val matchingAppDir = externalDirs.firstOrNull { it != null && it.absolutePath.contains(rawUuid) }
                     val appScopedDir = matchingAppDir?.let { File(it, "Nextcloud") }
                         ?: File("/storage/$rawUuid/Android/data/${context.packageName}/files/Nextcloud")
-                    ensureDirectoryPermissions(appScopedDir)
+
+                    val chosenDir = if (isRootWritable) {
+                        Log.i(TAG, "Using dedicated root folder for $displayName: ${rootNextcloudDir.absolutePath}")
+                        rootNextcloudDir
+                    } else {
+                        Log.i(TAG, "Root folder restricted, falling back to app-scoped dir for $displayName: ${appScopedDir.absolutePath}")
+                        appScopedDir
+                    }
+                    ensureDirectoryPermissions(chosenDir)
 
                     val rootFileObj = File(targetPath)
-                    val total = if (rootFileObj.totalSpace > 0) rootFileObj.totalSpace else appScopedDir.totalSpace
-                    val free = if (rootFileObj.freeSpace > 0) rootFileObj.freeSpace else appScopedDir.freeSpace
+                    val total = if (rootFileObj.totalSpace > 0) rootFileObj.totalSpace else chosenDir.totalSpace
+                    val free = if (rootFileObj.freeSpace > 0) rootFileObj.freeSpace else chosenDir.freeSpace
 
                     val safManager = SdCardSafManager(context)
                     val hasSaf = safManager.hasSafAccess(rawUuid)
@@ -425,9 +439,9 @@ class StorageMountManager(private val context: Context) {
                                 label = customLabel,
                                 displayName = displayName,
                                 nextcloudMountPoint = displayName,
-                                path = appScopedDir.absolutePath,
-                                displayPath = targetPath,
-                                isFullDrive = true,
+                                path = chosenDir.absolutePath,
+                                displayPath = chosenDir.absolutePath,
+                                isFullDrive = isRootWritable,
                                 isWritable = true,
                                 fsType = fsType,
                                 totalBytes = total,
@@ -460,13 +474,21 @@ class StorageMountManager(private val context: Context) {
                             }
 
                             val fsType = getFilesystemType(uuid)
-                            val rootFile = File("/storage/$uuid")
-                            val isRootWritable = isDirectoryWritable(rootFile)
+                            val targetPath = "/storage/$uuid"
+                            val rootFile = File(targetPath)
+                            val rootNextcloudDir = File(targetPath, "Nextcloud")
+                            val isRootWritable = try {
+                                if (!rootNextcloudDir.exists()) rootNextcloudDir.mkdirs()
+                                isDirectoryWritable(rootNextcloudDir)
+                            } catch (_: Exception) {
+                                false
+                            }
                             val appDir = File(dir, "Nextcloud")
-                            ensureDirectoryPermissions(appDir)
+                            val chosenDir = if (isRootWritable) rootNextcloudDir else appDir
+                            ensureDirectoryPermissions(chosenDir)
 
-                            val total = if (rootFile.totalSpace > 0) rootFile.totalSpace else dir.totalSpace
-                            val free = if (rootFile.freeSpace > 0) rootFile.freeSpace else dir.freeSpace
+                            val total = if (rootFile.totalSpace > 0) rootFile.totalSpace else chosenDir.totalSpace
+                            val free = if (rootFile.freeSpace > 0) rootFile.freeSpace else chosenDir.freeSpace
 
                             val safManager = SdCardSafManager(context)
                             val hasSaf = safManager.hasSafAccess(uuid)
@@ -478,9 +500,9 @@ class StorageMountManager(private val context: Context) {
                                         label = "",
                                         displayName = displayName,
                                         nextcloudMountPoint = displayName,
-                                        path = appDir.absolutePath,
-                                        displayPath = "/storage/$uuid",
-                                        isFullDrive = true,
+                                        path = chosenDir.absolutePath,
+                                        displayPath = chosenDir.absolutePath,
+                                        isFullDrive = isRootWritable,
                                         isWritable = true,
                                         fsType = fsType,
                                         totalBytes = total,

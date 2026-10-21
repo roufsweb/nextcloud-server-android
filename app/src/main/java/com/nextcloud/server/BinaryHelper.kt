@@ -77,7 +77,7 @@ object BinaryHelper {
      * (files/lib or files/bin) exist. If all libraries reside in nativeLibraryDir (standard APK install),
      * returns null to let the system dynamic linker and translation thunks resolve them naturally.
      */
-    fun getLdLibraryPath(context: Context): String? {
+    fun getLdLibraryPath(context: Context): String {
         val filesLib = File(context.filesDir, "lib")
         val filesBin = File(context.filesDir, "bin")
         val customPaths = mutableListOf<String>()
@@ -87,11 +87,7 @@ object BinaryHelper {
         if (filesBin.exists() && filesBin.list()?.isNotEmpty() == true) {
             customPaths.add(filesBin.absolutePath)
         }
-        return if (customPaths.isNotEmpty()) {
-            customPaths.add(context.applicationInfo.nativeLibraryDir)
-            customPaths.joinToString(":")
-        } else {
-            null
-        }
+        customPaths.add(context.applicationInfo.nativeLibraryDir)
+        return customPaths.joinToString(":")
     }
 }

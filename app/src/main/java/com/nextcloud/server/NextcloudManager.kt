@@ -164,7 +164,7 @@ class NextcloudManager(private val context: Context) {
      * calendar, contacts, notes, deck) are enabled out-of-the-box in a single batch OCC call.
      */
     fun ensureCoreAppsEnabled() {
-        val coreApps = listOf("files_external", "calendar", "contacts", "notes", "deck")
+        val coreApps = listOf("files_external", "calendar", "contacts", "notes", "deck", "photos", "viewer")
         val appsToEnable = mutableListOf<String>()
         for (app in coreApps) {
             val appInApps = File(File(nextcloudDir, "apps"), app).exists()
@@ -184,6 +184,39 @@ class NextcloudManager(private val context: Context) {
             }
         }
         ensureQrLoginCompatibility()
+        configurePreviewSettings()
+    }
+
+    /**
+     * Configures Nextcloud Preview and thumbnail generation subsystem for optimal
+     * mobile performance and full Photos/Videos gallery support via native PHP GD.
+     */
+    fun configurePreviewSettings() {
+        try {
+            executeOcc("config:system:set", "enable_previews", "--value=true", "--type=boolean")
+            executeOcc("config:system:set", "preview_max_x", "--value=2048", "--type=integer")
+            executeOcc("config:system:set", "preview_max_y", "--value=2048", "--type=integer")
+            executeOcc("config:system:set", "preview_max_memory", "--value=256", "--type=integer")
+            executeOcc("config:system:set", "preview_max_filesize_image", "--value=50", "--type=integer")
+            executeOcc("config:system:set", "preview_concurrency_all", "--value=8", "--type=integer")
+            executeOcc("config:system:set", "preview_concurrency_new", "--value=4", "--type=integer")
+
+            val providers = listOf(
+                "OC\\Preview\\PNG",
+                "OC\\Preview\\JPEG",
+                "OC\\Preview\\GIF",
+                "OC\\Preview\\BMP",
+                "OC\\Preview\\WebP",
+                "OC\\Preview\\MarkDown",
+                "OC\\Preview\\TXT"
+            )
+            for ((idx, provider) in providers.withIndex()) {
+                executeOcc("config:system:set", "enabledPreviewProviders", idx.toString(), "--value=$provider")
+            }
+            Log.i(TAG, "Preview generation system configured successfully with GD support.")
+        } catch (e: Exception) {
+            Log.w(TAG, "Error configuring preview settings: ${e.message}")
+        }
     }
 
     /**
@@ -935,9 +968,8 @@ ${'$'}CONFIG = [
                 env["OPENSSL_CONF"] = opensslCnf.absolutePath
             }
             env["TMPDIR"] = tmpDir.absolutePath
-            BinaryHelper.getLdLibraryPath(context)?.let { ldPath ->
-                env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
-            }
+            val ldPath = BinaryHelper.getLdLibraryPath(context)
+            env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
             for ((k, v) in envVars) {
                 env[k] = v
             }
@@ -969,9 +1001,8 @@ ${'$'}CONFIG = [
                 env["OPENSSL_CONF"] = opensslCnf.absolutePath
             }
             env["TMPDIR"] = tmpDir.absolutePath
-            BinaryHelper.getLdLibraryPath(context)?.let { ldPath ->
-                env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
-            }
+            val codeLdPath = BinaryHelper.getLdLibraryPath(context)
+            env["LD_LIBRARY_PATH"] = codeLdPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
 
             val process = pb.start()
             val output = process.inputStream.bufferedReader().readText()

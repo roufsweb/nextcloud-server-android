@@ -10,6 +10,9 @@ sys_temp_dir="{{FILES_DIR}}/tmp"
 upload_tmp_dir="{{FILES_DIR}}/tmp"
 session.save_path="{{FILES_DIR}}/tmp"
 
+extension_dir="{{NATIVE_LIB_DIR}}"
+extension=gd.so
+
 [curl]
 curl.cainfo="{{FILES_DIR}}/conf/cacert.pem"
 

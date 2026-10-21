@@ -303,9 +303,8 @@ class NextcloudServerService : Service() {
             env["OPENSSL_CONF"] = opensslCnf.absolutePath
         }
         env["TMPDIR"] = tmpDir.absolutePath
-        BinaryHelper.getLdLibraryPath(this)?.let { ldPath ->
-            env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
-        }
+        val ldPath = BinaryHelper.getLdLibraryPath(this)
+        env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
         
         phpProcess = pb.start()
         
@@ -330,9 +329,8 @@ class NextcloudServerService : Service() {
         
         // Set LD_LIBRARY_PATH
         val env = pb.environment()
-        BinaryHelper.getLdLibraryPath(this)?.let { ldPath ->
-            env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
-        }
+        val nginxLdPath = BinaryHelper.getLdLibraryPath(this)
+        env["LD_LIBRARY_PATH"] = nginxLdPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
 
         nginxProcess = pb.start()
 
