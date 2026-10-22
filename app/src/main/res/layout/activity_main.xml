@@ -4,15 +4,15 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="?android:attr/colorBackground">
+    android:background="?android:attr/colorBackground"
+    android:orientation="vertical">
 
     <!-- Top App Bar Header (Google M3 Style) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
         android:gravity="center_vertical"
+        android:orientation="horizontal"
         android:paddingHorizontal="20dp"
         android:paddingTop="16dp"
         android:paddingBottom="12dp">
@@ -26,44 +26,44 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:layout_marginStart="14dp"
+            android:layout_weight="1"
             android:orientation="vertical">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Nextcloud Server"
-                android:textSize="20sp"
                 android:fontFamily="sans-serif-medium"
-                android:textStyle="bold"
-                android:textColor="@color/m3_on_surface" />
+                android:text="Nextcloud Server"
+                android:textColor="@color/m3_on_surface"
+                android:textSize="20sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Self-Hosted Server • ARM64"
-                android:textSize="12sp"
                 android:fontFamily="sans-serif"
-                android:textColor="@color/m3_on_surface_variant" />
+                android:text="Self-Hosted Server • ARM64"
+                android:textColor="@color/m3_on_surface_variant"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <!-- Top Quick Logs Action Button -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/topLogsButton"
+            style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:padding="0dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
             android:insetLeft="0dp"
+            android:insetTop="0dp"
             android:insetRight="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
+            app:cornerRadius="12dp"
             app:icon="@drawable/ic_description"
-            app:iconSize="22dp"
             app:iconGravity="textStart"
             app:iconPadding="0dp"
-            app:cornerRadius="12dp"
-            style="@style/Widget.Material3.Button.IconButton"
+            app:iconSize="22dp"
             app:iconTint="@color/m3_on_surface_variant" />
     </LinearLayout>
 
@@ -96,10 +96,10 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="@color/m3_surface_container_low"
                     app:cardCornerRadius="24dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="0dp"
-                    app:cardBackgroundColor="@color/m3_surface_container_low">
+                    app:strokeWidth="0dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -111,18 +111,18 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
+                            android:layout_marginBottom="16dp"
                             android:gravity="center_vertical"
-                            android:layout_marginBottom="16dp">
+                            android:orientation="horizontal">
 
                             <!-- Visual Status Beacon Badge -->
                             <LinearLayout
                                 android:id="@+id/statusBadgeContainer"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:orientation="horizontal"
-                                android:gravity="center_vertical"
                                 android:background="@drawable/pill_bg"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
                                 android:paddingHorizontal="12dp"
                                 android:paddingVertical="6dp">
 
@@ -130,18 +130,18 @@
                                     android:id="@+id/statusIndicatorDot"
                                     android:layout_width="12dp"
                                     android:layout_height="12dp"
-                                    android:background="@drawable/status_dot_stopped"
-                                    android:layout_marginEnd="8dp" />
+                                    android:layout_marginEnd="8dp"
+                                    android:background="@drawable/status_dot_stopped" />
 
                                 <TextView
                                     android:id="@+id/statusPill"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="Offline"
-                                    android:textSize="12.5sp"
-                                    android:textStyle="bold"
                                     android:fontFamily="sans-serif-medium"
-                                    android:textColor="@color/m3_on_surface_variant" />
+                                    android:text="Offline"
+                                    android:textColor="@color/m3_on_surface_variant"
+                                    android:textSize="12.5sp"
+                                    android:textStyle="bold" />
                             </LinearLayout>
 
                             <TextView
@@ -149,12 +149,12 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
+                                android:ellipsize="end"
                                 android:gravity="end"
                                 android:singleLine="true"
-                                android:ellipsize="end"
                                 android:text="Ready to start"
-                                android:textSize="12sp"
-                                android:textColor="@color/m3_on_surface_variant" />
+                                android:textColor="@color/m3_on_surface_variant"
+                                android:textSize="12sp" />
                         </LinearLayout>
 
                         <!-- Live URL Container (Visible When Server Running) -->
@@ -162,12 +162,12 @@
                             android:id="@+id/urlContainer"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
+                            android:layout_marginBottom="16dp"
                             android:background="@drawable/url_bg"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
                             android:paddingHorizontal="14dp"
                             android:paddingVertical="12dp"
-                            android:layout_marginBottom="16dp"
                             android:visibility="gone"
                             tools:visibility="visible">
 
@@ -180,43 +180,43 @@
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="LOCAL ADDRESS"
-                                    android:textSize="10.5sp"
-                                    android:textStyle="bold"
-                                    android:letterSpacing="0.06"
                                     android:fontFamily="sans-serif-medium"
-                                    android:textColor="@color/m3_on_surface_variant" />
+                                    android:letterSpacing="0.06"
+                                    android:text="LOCAL ADDRESS"
+                                    android:textColor="@color/m3_on_surface_variant"
+                                    android:textSize="10.5sp"
+                                    android:textStyle="bold" />
 
                                 <TextView
                                     android:id="@+id/serverUrlText"
                                     android:layout_width="match_parent"
                                     android:layout_height="wrap_content"
-                                    android:text="http://192.168.0.227:8000"
-                                    android:textSize="11sp"
-                                    android:textStyle="bold"
-                                    android:fontFamily="monospace"
-                                    android:textColor="@color/m3_primary"
-                                    android:singleLine="true"
+                                    android:layout_marginTop="2dp"
                                     android:ellipsize="middle"
-                                    android:layout_marginTop="2dp" />
+                                    android:fontFamily="monospace"
+                                    android:singleLine="true"
+                                    android:text="http://192.168.0.227:8000"
+                                    android:textColor="@color/m3_primary"
+                                    android:textSize="11sp"
+                                    android:textStyle="bold" />
                             </LinearLayout>
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/copyUrlButton"
+                                style="@style/Widget.Material3.Button.TonalButton"
                                 android:layout_width="wrap_content"
                                 android:layout_height="36dp"
+                                android:contentDescription="Copy URL"
+                                android:minWidth="0dp"
+                                android:paddingHorizontal="8dp"
                                 android:text="Copy"
                                 android:textSize="11.5sp"
                                 android:textStyle="bold"
-                                android:paddingHorizontal="8dp"
-                                android:minWidth="0dp"
+                                app:cornerRadius="18dp"
                                 app:icon="@drawable/ic_content_copy"
-                                app:iconSize="16dp"
                                 app:iconGravity="textStart"
                                 app:iconPadding="4dp"
-                                app:cornerRadius="18dp"
-                                style="@style/Widget.Material3.Button.TonalButton"
-                                android:contentDescription="Copy URL" />
+                                app:iconSize="16dp" />
                         </LinearLayout>
 
                         <!-- Initial Setup / Core Extraction Progress Container -->
@@ -224,59 +224,59 @@
                             android:id="@+id/setupProgressContainer"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
                             android:layout_marginBottom="14dp"
+                            android:orientation="vertical"
                             android:visibility="gone">
 
                             <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:orientation="horizontal"
+                                android:layout_marginBottom="6dp"
                                 android:gravity="center_vertical"
-                                android:layout_marginBottom="6dp">
+                                android:orientation="horizontal">
 
                                 <TextView
                                     android:id="@+id/setupStatusText"
                                     android:layout_width="0dp"
                                     android:layout_height="wrap_content"
                                     android:layout_weight="1"
-                                    android:text="Setting up Nextcloud core..."
-                                    android:textSize="12sp"
                                     android:fontFamily="sans-serif-medium"
-                                    android:textColor="@color/m3_on_surface_variant" />
+                                    android:text="Setting up Nextcloud core..."
+                                    android:textColor="@color/m3_on_surface_variant"
+                                    android:textSize="12sp" />
 
                                 <TextView
                                     android:id="@+id/setupPercentText"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="0%"
+                                    android:textColor="@color/m3_primary"
                                     android:textSize="12sp"
-                                    android:textStyle="bold"
-                                    android:textColor="@color/m3_primary" />
+                                    android:textStyle="bold" />
                             </LinearLayout>
 
                             <com.google.android.material.progressindicator.LinearProgressIndicator
                                 android:id="@+id/setupProgressBar"
                                 android:layout_width="match_parent"
                                 android:layout_height="6dp"
-                                app:trackCornerRadius="3dp"
                                 app:indicatorColor="@color/m3_primary"
-                                app:trackColor="@color/m3_surface_container_highest" />
+                                app:trackColor="@color/m3_surface_container_highest"
+                                app:trackCornerRadius="3dp" />
                         </LinearLayout>
 
                         <!-- Unified Server Action Button (Start / Stop) -->
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/serverActionButton"
+                            style="@style/Widget.Material3.Button"
                             android:layout_width="match_parent"
                             android:layout_height="54dp"
                             android:text="Start Server"
                             android:textSize="14.5sp"
                             android:textStyle="bold"
+                            app:cornerRadius="27dp"
                             app:icon="@drawable/ic_play_arrow"
                             app:iconGravity="textStart"
-                            app:iconPadding="8dp"
-                            app:cornerRadius="27dp"
-                            style="@style/Widget.Material3.Button" />
+                            app:iconPadding="8dp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
@@ -284,14 +284,14 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="SYSTEM OVERVIEW"
-                    android:textSize="11.5sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/m3_on_surface_variant"
                     android:layout_marginStart="4dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="SYSTEM OVERVIEW"
+                    android:textColor="@color/m3_on_surface_variant"
+                    android:textSize="11.5sp"
+                    android:textStyle="bold" />
 
                 <!-- Storage Quick Glance Card (Tap jumps to Storage Tab) -->
                 <com.google.android.material.card.MaterialCardView
@@ -299,20 +299,20 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="12dp"
-                    app:cardCornerRadius="20dp"
-                    app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
-                    app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface"
                     android:clickable="true"
                     android:focusable="true"
-                    android:foreground="?android:attr/selectableItemBackground">
+                    android:foreground="?android:attr/selectableItemBackground"
+                    app:cardBackgroundColor="@color/m3_surface"
+                    app:cardCornerRadius="20dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="@color/m3_outline_variant"
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
                         android:gravity="center_vertical"
+                        android:orientation="horizontal"
                         android:padding="16dp">
 
                         <ImageView
@@ -324,26 +324,26 @@
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
                             android:layout_marginStart="14dp"
+                            android:layout_weight="1"
                             android:orientation="vertical">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="Storage &amp; Disks"
+                                android:textColor="@color/m3_on_surface"
                                 android:textSize="14.5sp"
-                                android:textStyle="bold"
-                                android:textColor="@color/m3_on_surface" />
+                                android:textStyle="bold" />
 
                             <TextView
                                 android:id="@+id/quickStorageUsageText"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
                                 android:text="Internal disk &amp; hot-plug USB drives"
-                                android:textSize="12.5sp"
                                 android:textColor="@color/m3_on_surface_variant"
-                                android:layout_marginTop="2dp" />
+                                android:textSize="12.5sp" />
                         </LinearLayout>
 
                         <ImageView
@@ -360,20 +360,20 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="12dp"
-                    app:cardCornerRadius="20dp"
-                    app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
-                    app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface"
                     android:clickable="true"
                     android:focusable="true"
-                    android:foreground="?android:attr/selectableItemBackground">
+                    android:foreground="?android:attr/selectableItemBackground"
+                    app:cardBackgroundColor="@color/m3_surface"
+                    app:cardCornerRadius="20dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="@color/m3_outline_variant"
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
                         android:gravity="center_vertical"
+                        android:orientation="horizontal"
                         android:padding="16dp">
 
                         <ImageView
@@ -385,25 +385,25 @@
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
                             android:layout_marginStart="14dp"
+                            android:layout_weight="1"
                             android:orientation="vertical">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="Network &amp; Access"
+                                android:textColor="@color/m3_on_surface"
                                 android:textSize="14.5sp"
-                                android:textStyle="bold"
-                                android:textColor="@color/m3_on_surface" />
+                                android:textStyle="bold" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
                                 android:text="Port configuration &amp; trusted domains"
-                                android:textSize="12.5sp"
                                 android:textColor="@color/m3_on_surface_variant"
-                                android:layout_marginTop="2dp" />
+                                android:textSize="12.5sp" />
                         </LinearLayout>
 
                         <ImageView
@@ -419,20 +419,20 @@
                     android:id="@+id/quickSettingsCard"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    app:cardCornerRadius="20dp"
-                    app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
-                    app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface"
                     android:clickable="true"
                     android:focusable="true"
-                    android:foreground="?android:attr/selectableItemBackground">
+                    android:foreground="?android:attr/selectableItemBackground"
+                    app:cardBackgroundColor="@color/m3_surface"
+                    app:cardCornerRadius="20dp"
+                    app:cardElevation="0dp"
+                    app:strokeColor="@color/m3_outline_variant"
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
                         android:gravity="center_vertical"
+                        android:orientation="horizontal"
                         android:padding="16dp">
 
                         <ImageView
@@ -444,25 +444,25 @@
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
                             android:layout_marginStart="14dp"
+                            android:layout_weight="1"
                             android:orientation="vertical">
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="Settings &amp; System"
+                                android:textColor="@color/m3_on_surface"
                                 android:textSize="14.5sp"
-                                android:textStyle="bold"
-                                android:textColor="@color/m3_on_surface" />
+                                android:textStyle="bold" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
                                 android:text="Authentication, appearance &amp; server logs"
-                                android:textSize="12.5sp"
                                 android:textColor="@color/m3_on_surface_variant"
-                                android:layout_marginTop="2dp" />
+                                android:textSize="12.5sp" />
                         </LinearLayout>
 
                         <ImageView
@@ -497,26 +497,26 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="INTERNAL STORAGE"
-                    android:textSize="11.5sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/m3_on_surface_variant"
                     android:layout_marginStart="4dp"
                     android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="INTERNAL STORAGE"
+                    android:textColor="@color/m3_on_surface_variant"
+                    android:textSize="11.5sp"
+                    android:textStyle="bold" />
 
                 <!-- Internal Storage Card -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="@color/m3_surface"
                     app:cardCornerRadius="20dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
                     app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface">
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -527,8 +527,8 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="26dp"
@@ -539,69 +539,69 @@
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
                                 android:layout_marginStart="14dp"
+                                android:layout_weight="1"
                                 android:orientation="vertical">
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="Internal Storage"
+                                    android:textColor="@color/m3_on_surface"
                                     android:textSize="15sp"
-                                    android:textStyle="bold"
-                                    android:textColor="@color/m3_on_surface" />
+                                    android:textStyle="bold" />
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
                                     android:text="Internal application data storage"
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_on_surface_variant"
-                                    android:layout_marginTop="2dp" />
+                                    android:textSize="12sp" />
                             </LinearLayout>
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/changeDataDirButton"
+                                style="@style/Widget.Material3.Button.TonalButton"
                                 android:layout_width="wrap_content"
                                 android:layout_height="40dp"
                                 android:text="Change"
                                 android:textSize="12.5sp"
                                 android:textStyle="bold"
-                                app:cornerRadius="20dp"
-                                style="@style/Widget.Material3.Button.TonalButton" />
+                                app:cornerRadius="20dp" />
                         </LinearLayout>
 
                         <!-- Full Path Pill Container -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:background="@drawable/pill_bg"
-                            android:paddingHorizontal="12dp"
-                            android:paddingVertical="8dp"
                             android:layout_marginTop="12dp"
+                            android:background="@drawable/pill_bg"
+                            android:gravity="center_vertical"
                             android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="8dp">
 
                             <TextView
                                 android:id="@+id/currentDataDirText"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:text="/data/user/0/com.nextcloud.server/files/nextcloud/data"
-                                android:textSize="11.5sp"
+                                android:ellipsize="middle"
                                 android:fontFamily="monospace"
-                                android:textColor="@color/m3_on_surface_variant"
                                 android:singleLine="true"
-                                android:ellipsize="middle" />
+                                android:text="/data/user/0/com.nextcloud.server/files/nextcloud/data"
+                                android:textColor="@color/m3_on_surface_variant"
+                                android:textSize="11.5sp" />
                         </LinearLayout>
 
                         <!-- Google Files-style Storage Meter -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical"
                             android:layout_marginTop="16dp"
-                            android:layout_marginBottom="8dp">
+                            android:layout_marginBottom="8dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <TextView
                                 android:id="@+id/storageUsedTotalText"
@@ -609,8 +609,8 @@
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:text="1.8 GB of 64 GB used"
-                                android:textSize="12.5sp"
                                 android:textColor="@color/m3_on_surface"
+                                android:textSize="12.5sp"
                                 android:textStyle="bold" />
 
                             <TextView
@@ -618,8 +618,8 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="54.2 GB free"
-                                android:textSize="12.5sp"
-                                android:textColor="@color/m3_on_surface_variant" />
+                                android:textColor="@color/m3_on_surface_variant"
+                                android:textSize="12.5sp" />
                         </LinearLayout>
 
                         <com.google.android.material.progressindicator.LinearProgressIndicator
@@ -627,18 +627,18 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:progress="25"
-                            app:trackThickness="8dp"
-                            app:trackCornerRadius="4dp"
                             app:indicatorColor="@color/m3_primary"
-                            app:trackColor="@color/m3_surface_container_highest" />
+                            app:trackColor="@color/m3_surface_container_highest"
+                            app:trackCornerRadius="4dp"
+                            app:trackThickness="8dp" />
 
                         <!-- Migration Progress Indicator -->
                         <LinearLayout
                             android:id="@+id/migrationProgressContainer"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
                             android:layout_marginTop="14dp"
+                            android:orientation="vertical"
                             android:visibility="gone"
                             tools:visibility="visible">
 
@@ -646,10 +646,10 @@
                                 android:id="@+id/migrationStatusText"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
+                                android:layout_marginBottom="6dp"
                                 android:text="Migrating data..."
-                                android:textSize="12sp"
                                 android:textColor="@color/m3_primary"
-                                android:layout_marginBottom="6dp" />
+                                android:textSize="12sp" />
 
                             <ProgressBar
                                 android:id="@+id/migrationProgressBar"
@@ -667,14 +667,14 @@
                     android:id="@+id/removableStorageSectionTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="EXTERNAL STORAGE"
-                    android:textSize="11.5sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/m3_on_surface_variant"
                     android:layout_marginStart="4dp"
                     android:layout_marginBottom="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="EXTERNAL STORAGE"
+                    android:textColor="@color/m3_on_surface_variant"
+                    android:textSize="11.5sp"
+                    android:textStyle="bold"
                     android:visibility="gone" />
 
                 <!-- External Drives Card with Individual Dynamic Toggles -->
@@ -683,12 +683,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
+                    android:visibility="gone"
+                    app:cardBackgroundColor="@color/m3_surface"
                     app:cardCornerRadius="20dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
                     app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface"
-                    android:visibility="gone">
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:id="@+id/externalDrivesContainer"
@@ -722,26 +722,26 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="PORT CONFIGURATION"
-                    android:textSize="11.5sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/m3_on_surface_variant"
                     android:layout_marginStart="4dp"
                     android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="PORT CONFIGURATION"
+                    android:textColor="@color/m3_on_surface_variant"
+                    android:textSize="11.5sp"
+                    android:textStyle="bold" />
 
                 <!-- HTTP Port Card -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="@color/m3_surface"
                     app:cardCornerRadius="20dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
                     app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface">
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -750,66 +750,66 @@
                         android:padding="18dp">
 
                         <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:hint="HTTP Port"
-                            app:helperText="Supported range: 1024–65535 (non-root)"
-                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+                            app:helperText="Supported range: 1024–65535 (non-root)">
 
                             <com.google.android.material.textfield.TextInputEditText
                                 android:id="@+id/portInput"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:inputType="number"
                                 android:imeOptions="actionDone"
+                                android:inputType="number"
                                 android:text="8000"
                                 android:textSize="14sp" />
                         </com.google.android.material.textfield.TextInputLayout>
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/applyPortButton"
+                            style="@style/Widget.Material3.Button.TonalButton"
                             android:layout_width="match_parent"
                             android:layout_height="48dp"
-                            android:text="Apply Port"
-                            android:textSize="13.5sp"
-                            android:fontFamily="sans-serif-medium"
-                            android:textAllCaps="false"
                             android:layout_marginTop="12dp"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="Apply Port"
+                            android:textAllCaps="false"
+                            android:textSize="13.5sp"
                             app:cornerRadius="12dp"
                             app:icon="@drawable/ic_sync"
-                            app:iconSize="18dp"
                             app:iconGravity="textStart"
-                            style="@style/Widget.Material3.Button.TonalButton" />
+                            app:iconSize="18dp" />
 
                         <!-- Port Change Progress Container -->
                         <LinearLayout
                             android:id="@+id/portProgressContainer"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
                             android:layout_marginTop="12dp"
-                            android:padding="12dp"
                             android:background="@drawable/pill_bg"
+                            android:orientation="vertical"
+                            android:padding="12dp"
                             android:visibility="gone">
 
                             <TextView
                                 android:id="@+id/portProgressStatusText"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Switching port..."
-                                android:textSize="12.5sp"
-                                android:textColor="@color/m3_on_surface"
+                                android:layout_marginBottom="8dp"
                                 android:fontFamily="sans-serif-medium"
-                                android:layout_marginBottom="8dp" />
+                                android:text="Switching port..."
+                                android:textColor="@color/m3_on_surface"
+                                android:textSize="12.5sp" />
 
                             <com.google.android.material.progressindicator.LinearProgressIndicator
                                 android:id="@+id/portProgressBar"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:indeterminate="true"
-                                app:trackCornerRadius="4dp"
                                 app:indicatorColor="@color/m3_primary"
-                                app:trackColor="@color/m3_surface_container" />
+                                app:trackColor="@color/m3_surface_container"
+                                app:trackCornerRadius="4dp" />
                         </LinearLayout>
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -818,25 +818,25 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="TRUSTED DOMAINS"
-                    android:textSize="11.5sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/m3_on_surface_variant"
                     android:layout_marginStart="4dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="TRUSTED DOMAINS"
+                    android:textColor="@color/m3_on_surface_variant"
+                    android:textSize="11.5sp"
+                    android:textStyle="bold" />
 
                 <!-- Trusted Domains Card -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="@color/m3_surface"
                     app:cardCornerRadius="20dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
                     app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface">
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -847,9 +847,9 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
+                            android:layout_marginBottom="12dp"
                             android:gravity="center_vertical"
-                            android:layout_marginBottom="12dp">
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="26dp"
@@ -860,36 +860,36 @@
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
                                 android:layout_marginStart="14dp"
+                                android:layout_weight="1"
                                 android:orientation="vertical">
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="Trusted Domains &amp; Hosts"
+                                    android:textColor="@color/m3_on_surface"
                                     android:textSize="15sp"
-                                    android:textStyle="bold"
-                                    android:textColor="@color/m3_on_surface" />
+                                    android:textStyle="bold" />
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
                                     android:text="Allowed client hostnames and IP addresses"
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_on_surface_variant"
-                                    android:layout_marginTop="2dp" />
+                                    android:textSize="12sp" />
                             </LinearLayout>
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/addDomainButton"
+                                style="@style/Widget.Material3.Button.TonalButton"
                                 android:layout_width="wrap_content"
                                 android:layout_height="40dp"
                                 android:text="Manage"
                                 android:textSize="12.5sp"
                                 android:textStyle="bold"
-                                app:cornerRadius="20dp"
-                                style="@style/Widget.Material3.Button.TonalButton" />
+                                app:cornerRadius="20dp" />
                         </LinearLayout>
 
                         <!-- Domains List -->
@@ -897,14 +897,14 @@
                             android:id="@+id/trustedDomainsListText"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="• localhost\n• 127.0.0.1\n• android.rouf.top"
-                            android:textSize="12.5sp"
+                            android:background="@drawable/pill_bg"
                             android:fontFamily="monospace"
                             android:lineSpacingExtra="4dp"
-                            android:textColor="@color/m3_on_surface"
-                            android:background="@drawable/pill_bg"
                             android:paddingHorizontal="14dp"
-                            android:paddingVertical="10dp" />
+                            android:paddingVertical="10dp"
+                            android:text="• localhost\n• 127.0.0.1\n• android.rouf.top"
+                            android:textColor="@color/m3_on_surface"
+                            android:textSize="12.5sp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
@@ -932,26 +932,26 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="APPEARANCE"
-                    android:textSize="11.5sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/m3_on_surface_variant"
                     android:layout_marginStart="4dp"
                     android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="APPEARANCE"
+                    android:textColor="@color/m3_on_surface_variant"
+                    android:textSize="11.5sp"
+                    android:textStyle="bold" />
 
                 <!-- Theme Selection Card -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="@color/m3_surface"
                     app:cardCornerRadius="20dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
                     app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface">
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -962,9 +962,9 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
+                            android:layout_marginBottom="14dp"
                             android:gravity="center_vertical"
-                            android:layout_marginBottom="14dp">
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="26dp"
@@ -975,26 +975,26 @@
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
                                 android:layout_marginStart="14dp"
+                                android:layout_weight="1"
                                 android:orientation="vertical">
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="Theme"
+                                    android:textColor="@color/m3_on_surface"
                                     android:textSize="15sp"
-                                    android:textStyle="bold"
-                                    android:textColor="@color/m3_on_surface" />
+                                    android:textStyle="bold" />
 
                                 <TextView
                                     android:id="@+id/currentThemeSubtitleText"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
                                     android:text="Follow system theme"
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_on_surface_variant"
-                                    android:layout_marginTop="2dp" />
+                                    android:textSize="12sp" />
                             </LinearLayout>
                         </LinearLayout>
 
@@ -1003,38 +1003,38 @@
                             android:id="@+id/themeToggleGroup"
                             android:layout_width="match_parent"
                             android:layout_height="48dp"
-                            app:singleSelection="true"
-                            app:selectionRequired="true">
+                            app:selectionRequired="true"
+                            app:singleSelection="true">
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/themeSystemButton"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
                                 android:layout_width="0dp"
                                 android:layout_height="match_parent"
                                 android:layout_weight="1"
                                 android:text="System"
                                 android:textSize="12.5sp"
-                                android:textStyle="bold"
-                                style="@style/Widget.Material3.Button.OutlinedButton" />
+                                android:textStyle="bold" />
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/themeLightButton"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
                                 android:layout_width="0dp"
                                 android:layout_height="match_parent"
                                 android:layout_weight="1"
                                 android:text="Light"
                                 android:textSize="12.5sp"
-                                android:textStyle="bold"
-                                style="@style/Widget.Material3.Button.OutlinedButton" />
+                                android:textStyle="bold" />
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/themeDarkButton"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
                                 android:layout_width="0dp"
                                 android:layout_height="match_parent"
                                 android:layout_weight="1"
                                 android:text="Dark"
                                 android:textSize="12.5sp"
-                                android:textStyle="bold"
-                                style="@style/Widget.Material3.Button.OutlinedButton" />
+                                android:textStyle="bold" />
                         </com.google.android.material.button.MaterialButtonToggleGroup>
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -1043,26 +1043,26 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="AUTHENTICATION"
-                    android:textSize="11.5sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/m3_on_surface_variant"
                     android:layout_marginStart="4dp"
                     android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="AUTHENTICATION"
+                    android:textColor="@color/m3_on_surface_variant"
+                    android:textSize="11.5sp"
+                    android:textStyle="bold" />
 
                 <!-- Admin Credentials Card -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="@color/m3_surface"
                     app:cardCornerRadius="20dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
                     app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface">
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -1073,9 +1073,9 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
+                            android:layout_marginBottom="14dp"
                             android:gravity="center_vertical"
-                            android:layout_marginBottom="14dp">
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="26dp"
@@ -1086,36 +1086,36 @@
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
                                 android:layout_marginStart="14dp"
+                                android:layout_weight="1"
                                 android:orientation="vertical">
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="Administrator Account"
+                                    android:textColor="@color/m3_on_surface"
                                     android:textSize="15sp"
-                                    android:textStyle="bold"
-                                    android:textColor="@color/m3_on_surface" />
+                                    android:textStyle="bold" />
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
                                     android:text="Primary superuser credentials"
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_on_surface_variant"
-                                    android:layout_marginTop="2dp" />
+                                    android:textSize="12sp" />
                             </LinearLayout>
                         </LinearLayout>
 
                         <com.google.android.material.textfield.TextInputLayout
                             android:id="@+id/adminUserInputLayout"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:hint="Username"
                             android:layout_marginBottom="12dp"
-                            app:errorEnabled="true"
-                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+                            android:hint="Username"
+                            app:errorEnabled="true">
 
                             <com.google.android.material.textfield.TextInputEditText
                                 android:id="@+id/adminUserInput"
@@ -1127,13 +1127,13 @@
 
                         <com.google.android.material.textfield.TextInputLayout
                             android:id="@+id/adminPassInputLayout"
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:hint="Password (min 8 characters)"
-                            app:passwordToggleEnabled="true"
-                            app:errorEnabled="true"
                             android:layout_marginBottom="8dp"
-                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+                            android:hint="Password (min 8 characters)"
+                            app:errorEnabled="true"
+                            app:passwordToggleEnabled="true">
 
                             <com.google.android.material.textfield.TextInputEditText
                                 android:id="@+id/adminPassInput"
@@ -1145,45 +1145,45 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/updateCredentialsButton"
+                            style="@style/Widget.Material3.Button.TonalButton"
                             android:layout_width="match_parent"
                             android:layout_height="48dp"
                             android:text="Save Credentials"
                             android:textSize="13.5sp"
                             android:textStyle="bold"
-                            app:cornerRadius="24dp"
-                            style="@style/Widget.Material3.Button.TonalButton" />
+                            app:cornerRadius="24dp" />
 
                         <!-- Credentials Progress Indicator -->
                         <LinearLayout
                             android:id="@+id/credentialsProgressContainer"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="vertical"
                             android:layout_marginTop="12dp"
+                            android:orientation="vertical"
                             android:visibility="gone">
 
                             <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:orientation="horizontal"
+                                android:layout_marginBottom="6dp"
                                 android:gravity="center_vertical"
-                                android:layout_marginBottom="6dp">
+                                android:orientation="horizontal">
 
                                 <TextView
                                     android:id="@+id/credentialsProgressStatusText"
                                     android:layout_width="0dp"
                                     android:layout_height="wrap_content"
                                     android:layout_weight="1"
+                                    android:fontFamily="sans-serif-medium"
                                     android:text="Updating credentials in Nextcloud..."
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_primary"
-                                    android:fontFamily="sans-serif-medium" />
+                                    android:textSize="12sp" />
 
                                 <ProgressBar
+                                    style="?android:attr/progressBarStyleSmall"
                                     android:layout_width="16dp"
                                     android:layout_height="16dp"
-                                    android:indeterminate="true"
-                                    style="?android:attr/progressBarStyleSmall" />
+                                    android:indeterminate="true" />
                             </LinearLayout>
 
                             <com.google.android.material.progressindicator.LinearProgressIndicator
@@ -1191,10 +1191,10 @@
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:indeterminate="true"
-                                app:trackThickness="4dp"
-                                app:trackCornerRadius="2dp"
                                 app:indicatorColor="@color/m3_primary"
-                                app:trackColor="@color/m3_surface_container_highest" />
+                                app:trackColor="@color/m3_surface_container_highest"
+                                app:trackCornerRadius="2dp"
+                                app:trackThickness="4dp" />
                         </LinearLayout>
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -1203,26 +1203,26 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="BACKGROUND &amp; PERMISSIONS"
-                    android:textSize="11.5sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/m3_on_surface_variant"
                     android:layout_marginStart="4dp"
                     android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="BACKGROUND &amp; PERMISSIONS"
+                    android:textColor="@color/m3_on_surface_variant"
+                    android:textSize="11.5sp"
+                    android:textStyle="bold" />
 
                 <!-- Background & Permissions Card -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="16dp"
+                    app:cardBackgroundColor="@color/m3_surface"
                     app:cardCornerRadius="20dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
                     app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface">
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -1234,8 +1234,8 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="24dp"
@@ -1246,27 +1246,27 @@
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
                                 android:layout_marginStart="14dp"
                                 android:layout_marginEnd="8dp"
+                                android:layout_weight="1"
                                 android:orientation="vertical">
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="Start on Boot"
+                                    android:textColor="@color/m3_on_surface"
                                     android:textSize="14.5sp"
-                                    android:textStyle="bold"
-                                    android:textColor="@color/m3_on_surface" />
+                                    android:textStyle="bold" />
 
                                 <TextView
                                     android:id="@+id/startOnBootSubtitleText"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
                                     android:text="Auto-start server when device boots"
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_on_surface_variant"
-                                    android:layout_marginTop="2dp" />
+                                    android:textSize="12sp" />
                             </LinearLayout>
 
                             <com.google.android.material.materialswitch.MaterialSwitch
@@ -1279,16 +1279,16 @@
                         <View
                             android:layout_width="match_parent"
                             android:layout_height="1dp"
-                            android:background="@color/m3_outline_variant"
-                            android:layout_marginVertical="12dp" />
+                            android:layout_marginVertical="12dp"
+                            android:background="@color/m3_outline_variant" />
 
                         <!-- Item 2: Battery Optimization -->
                         <LinearLayout
                             android:id="@+id/rowBatteryOptimization"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="24dp"
@@ -1299,48 +1299,48 @@
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
                                 android:layout_marginStart="14dp"
                                 android:layout_marginEnd="8dp"
+                                android:layout_weight="1"
                                 android:orientation="vertical">
 
                                 <LinearLayout
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:orientation="horizontal"
-                                    android:gravity="center_vertical">
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
 
                                     <TextView
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:text="Battery Usage"
+                                        android:textColor="@color/m3_on_surface"
                                         android:textSize="14.5sp"
-                                        android:textStyle="bold"
-                                        android:textColor="@color/m3_on_surface" />
+                                        android:textStyle="bold" />
 
                                     <TextView
                                         android:id="@+id/batteryOptimizationBadge"
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:layout_marginStart="8dp"
-                                        android:text="Unrestricted"
-                                        android:textSize="10sp"
-                                        android:textStyle="bold"
-                                        android:singleLine="true"
-                                        android:textColor="@color/status_green"
                                         android:background="@drawable/pill_bg"
                                         android:backgroundTint="@color/status_green_bg"
                                         android:paddingHorizontal="7dp"
-                                        android:paddingVertical="2dp" />
+                                        android:paddingVertical="2dp"
+                                        android:singleLine="true"
+                                        android:text="Unrestricted"
+                                        android:textColor="@color/status_green"
+                                        android:textSize="10sp"
+                                        android:textStyle="bold" />
                                 </LinearLayout>
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
                                     android:text="Ignore optimizations to prevent sleep kills"
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_on_surface_variant"
-                                    android:layout_marginTop="2dp" />
+                                    android:textSize="12sp" />
                             </LinearLayout>
 
                             <com.google.android.material.materialswitch.MaterialSwitch
@@ -1353,16 +1353,16 @@
                         <View
                             android:layout_width="match_parent"
                             android:layout_height="1dp"
-                            android:background="@color/m3_outline_variant"
-                            android:layout_marginVertical="12dp" />
+                            android:layout_marginVertical="12dp"
+                            android:background="@color/m3_outline_variant" />
 
                         <!-- Item 3: Storage Access Permission -->
                         <LinearLayout
                             android:id="@+id/rowStoragePermission"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="24dp"
@@ -1373,48 +1373,48 @@
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
                                 android:layout_marginStart="14dp"
                                 android:layout_marginEnd="8dp"
+                                android:layout_weight="1"
                                 android:orientation="vertical">
 
                                 <LinearLayout
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:orientation="horizontal"
-                                    android:gravity="center_vertical">
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
 
                                     <TextView
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:text="All Files Access"
+                                        android:textColor="@color/m3_on_surface"
                                         android:textSize="14.5sp"
-                                        android:textStyle="bold"
-                                        android:textColor="@color/m3_on_surface" />
+                                        android:textStyle="bold" />
 
                                     <TextView
                                         android:id="@+id/storagePermissionBadge"
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:layout_marginStart="8dp"
-                                        android:text="Granted"
-                                        android:textSize="10sp"
-                                        android:textStyle="bold"
-                                        android:singleLine="true"
-                                        android:textColor="@color/status_green"
                                         android:background="@drawable/pill_bg"
                                         android:backgroundTint="@color/status_green_bg"
                                         android:paddingHorizontal="7dp"
-                                        android:paddingVertical="2dp" />
+                                        android:paddingVertical="2dp"
+                                        android:singleLine="true"
+                                        android:text="Granted"
+                                        android:textColor="@color/status_green"
+                                        android:textSize="10sp"
+                                        android:textStyle="bold" />
                                 </LinearLayout>
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
                                     android:text="Manage storage, SD cards, and USB OTG"
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_on_surface_variant"
-                                    android:layout_marginTop="2dp" />
+                                    android:textSize="12sp" />
                             </LinearLayout>
 
                             <com.google.android.material.materialswitch.MaterialSwitch
@@ -1427,16 +1427,16 @@
                         <View
                             android:layout_width="match_parent"
                             android:layout_height="1dp"
-                            android:background="@color/m3_outline_variant"
-                            android:layout_marginVertical="12dp" />
+                            android:layout_marginVertical="12dp"
+                            android:background="@color/m3_outline_variant" />
 
                         <!-- Item 4: Notification Permission -->
                         <LinearLayout
                             android:id="@+id/rowNotificationPermission"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="24dp"
@@ -1447,48 +1447,48 @@
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
                                 android:layout_marginStart="14dp"
                                 android:layout_marginEnd="8dp"
+                                android:layout_weight="1"
                                 android:orientation="vertical">
 
                                 <LinearLayout
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:orientation="horizontal"
-                                    android:gravity="center_vertical">
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
 
                                     <TextView
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:text="Notifications"
+                                        android:textColor="@color/m3_on_surface"
                                         android:textSize="14.5sp"
-                                        android:textStyle="bold"
-                                        android:textColor="@color/m3_on_surface" />
+                                        android:textStyle="bold" />
 
                                     <TextView
                                         android:id="@+id/notificationPermissionBadge"
                                         android:layout_width="wrap_content"
                                         android:layout_height="wrap_content"
                                         android:layout_marginStart="8dp"
-                                        android:text="Allowed"
-                                        android:textSize="10sp"
-                                        android:textStyle="bold"
-                                        android:singleLine="true"
-                                        android:textColor="@color/status_green"
                                         android:background="@drawable/pill_bg"
                                         android:backgroundTint="@color/status_green_bg"
                                         android:paddingHorizontal="7dp"
-                                        android:paddingVertical="2dp" />
+                                        android:paddingVertical="2dp"
+                                        android:singleLine="true"
+                                        android:text="Allowed"
+                                        android:textColor="@color/status_green"
+                                        android:textSize="10sp"
+                                        android:textStyle="bold" />
                                 </LinearLayout>
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
                                     android:text="Required for foreground server persistence"
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_on_surface_variant"
-                                    android:layout_marginTop="2dp" />
+                                    android:textSize="12sp" />
                             </LinearLayout>
 
                             <com.google.android.material.materialswitch.MaterialSwitch
@@ -1501,15 +1501,15 @@
                         <View
                             android:layout_width="match_parent"
                             android:layout_height="1dp"
-                            android:background="@color/m3_outline_variant"
-                            android:layout_marginVertical="12dp" />
+                            android:layout_marginVertical="12dp"
+                            android:background="@color/m3_outline_variant" />
 
                         <!-- Item 5: CPU Wake Lock -->
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="24dp"
@@ -1520,26 +1520,26 @@
                             <LinearLayout
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_weight="1"
                                 android:layout_marginStart="14dp"
                                 android:layout_marginEnd="8dp"
+                                android:layout_weight="1"
                                 android:orientation="vertical">
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:text="CPU Wake Lock"
+                                    android:textColor="@color/m3_on_surface"
                                     android:textSize="14.5sp"
-                                    android:textStyle="bold"
-                                    android:textColor="@color/m3_on_surface" />
+                                    android:textStyle="bold" />
 
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
                                     android:text="Prevent CPU sleep while server is online"
-                                    android:textSize="12sp"
                                     android:textColor="@color/m3_on_surface_variant"
-                                    android:layout_marginTop="2dp" />
+                                    android:textSize="12sp" />
                             </LinearLayout>
 
                             <com.google.android.material.materialswitch.MaterialSwitch
@@ -1555,24 +1555,24 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="SYSTEM INFORMATION"
-                    android:textSize="11.5sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.08"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/m3_on_surface_variant"
                     android:layout_marginStart="4dp"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.08"
+                    android:text="SYSTEM INFORMATION"
+                    android:textColor="@color/m3_on_surface_variant"
+                    android:textSize="11.5sp"
+                    android:textStyle="bold" />
 
                 <!-- Diagnostics & Logs Card -->
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    app:cardBackgroundColor="@color/m3_surface"
                     app:cardCornerRadius="20dp"
                     app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
                     app:strokeColor="@color/m3_outline_variant"
-                    app:cardBackgroundColor="@color/m3_surface">
+                    app:strokeWidth="1dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -1583,8 +1583,8 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal"
-                            android:gravity="center_vertical">
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
 
                             <ImageView
                                 android:layout_width="24dp"
@@ -1597,32 +1597,32 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginStart="10dp"
                                 android:text="Server Components"
+                                android:textColor="@color/m3_on_surface"
                                 android:textSize="14.5sp"
-                                android:textStyle="bold"
-                                android:textColor="@color/m3_on_surface" />
+                                android:textStyle="bold" />
                         </LinearLayout>
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="• Nextcloud Hub 10 (35.0.2)\n• Nginx 1.30 Web Server\n• PHP 8.2-FPM Process Manager\n• SQLite 3 with WAL Journaling"
-                            android:textSize="12.5sp"
-                            android:lineSpacingExtra="4dp"
-                            android:textColor="@color/m3_on_surface_variant"
                             android:layout_marginTop="8dp"
-                            android:layout_marginBottom="16dp" />
+                            android:layout_marginBottom="16dp"
+                            android:lineSpacingExtra="4dp"
+                            android:text="• Nextcloud Hub 10 (35.0.2)\n• Nginx 1.30 Web Server\n• PHP 8.2-FPM Process Manager\n• SQLite 3 with WAL Journaling"
+                            android:textColor="@color/m3_on_surface_variant"
+                            android:textSize="12.5sp" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/viewLogsButton"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
                             android:layout_width="match_parent"
                             android:layout_height="48dp"
                             android:text="View Server Logs"
                             android:textSize="13.5sp"
                             android:textStyle="bold"
-                            app:icon="@drawable/ic_description"
-                            app:iconGravity="textStart"
                             app:cornerRadius="24dp"
-                            style="@style/Widget.Material3.Button.OutlinedButton" />
+                            app:icon="@drawable/ic_description"
+                            app:iconGravity="textStart" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
             </LinearLayout>

@@ -168,6 +168,9 @@ class NextcloudServerService : Service() {
                     startMonitoring()
                 }
 
+                // Start Zero-Picker MediaStore/SAF Broker for Android 8-17 SD root access
+                SdRootMediaStoreBridge.startBroker(this@NextcloudServerService)
+
                 // Start active relay watchers for all storages with granted SAF permissions
                 val grantedUuids = safManager?.getAllGrantedStorageUuids() ?: emptyList()
                 if (grantedUuids.isNotEmpty()) {
@@ -304,7 +307,9 @@ class NextcloudServerService : Service() {
         }
         env["TMPDIR"] = tmpDir.absolutePath
         val ldPath = BinaryHelper.getLdLibraryPath(this)
-        env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+        if (!ldPath.isNullOrBlank()) {
+            env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+        }
         
         phpProcess = pb.start()
         
@@ -330,7 +335,9 @@ class NextcloudServerService : Service() {
         // Set LD_LIBRARY_PATH
         val env = pb.environment()
         val nginxLdPath = BinaryHelper.getLdLibraryPath(this)
-        env["LD_LIBRARY_PATH"] = nginxLdPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+        if (!nginxLdPath.isNullOrBlank()) {
+            env["LD_LIBRARY_PATH"] = nginxLdPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+        }
 
         nginxProcess = pb.start()
 
@@ -351,6 +358,7 @@ class NextcloudServerService : Service() {
         safManager = null
         storageMountManager?.stopMonitoring()
         storageMountManager = null
+        SdRootMediaStoreBridge.stopBroker()
         phpProcess?.destroy()
         stopNginxProcess()
         phpProcess = null

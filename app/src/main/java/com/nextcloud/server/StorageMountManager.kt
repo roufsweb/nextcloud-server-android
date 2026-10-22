@@ -32,6 +32,60 @@ class StorageMountManager(private val context: Context) {
         const val ACTION_STORAGE_CHANGED = "com.nextcloud.server.STORAGE_CHANGED"
         const val ACTION_USB_DEVICE_ATTACHED = "android.hardware.usb.action.USB_DEVICE_ATTACHED"
         const val ACTION_USB_DEVICE_DETACHED = "android.hardware.usb.action.USB_DEVICE_DETACHED"
+
+        internal fun parseFilesystemTypeFromMountLine(line: String): String {
+            val lower = line.lowercase()
+            return when {
+                lower.contains("vfat") || lower.contains("fat32") || lower.contains("msdos") -> "FAT32"
+                lower.contains("exfat") || lower.contains("fs=exfat") -> "exFAT"
+                lower.contains("ntfs") || lower.contains("ntfs3") || lower.contains("fuseblk") -> "NTFS"
+                lower.contains("ext4") -> "ext4"
+                lower.contains("f2fs") -> "F2FS"
+                lower.contains("sdfat") -> if (lower.contains("fs=exfat")) "exFAT" else "FAT32"
+                else -> "FAT32"
+            }
+        }
+
+        internal fun isSdCardClassification(
+            desc: String,
+            volId: String?,
+            mountLines: List<String> = emptyList(),
+            voldEntries: List<String> = emptyList(),
+            uuid: String = ""
+        ): Boolean {
+            val lowerDesc = desc.lowercase()
+            if (lowerDesc.contains("usb") || lowerDesc.contains("otg")) {
+                return false
+            }
+
+            if (volId != null) {
+                val lowerVol = volId.lowercase()
+                if (lowerVol.contains("179,") || lowerVol.contains("mmc")) {
+                    return true
+                }
+                if (lowerVol.contains("8,") || lowerVol.contains("7,") || lowerVol.contains("loop")) {
+                    return false
+                }
+            }
+
+            for (line in mountLines) {
+                if (uuid.isEmpty() || line.contains(uuid, ignoreCase = true)) {
+                    val lowerLine = line.lowercase()
+                    if (lowerLine.contains("public:179") || lowerLine.contains("mmcblk") || lowerLine.contains("/dev/block/mmc")) {
+                        return true
+                    }
+                    if (lowerLine.contains("public:8") || lowerLine.contains("public:7") || lowerLine.contains("/dev/block/sd") || lowerLine.contains("loop")) {
+                        return false
+                    }
+                }
+            }
+
+            if (voldEntries.any { it.startsWith("public:179") && (uuid.isEmpty() || it.contains(uuid, ignoreCase = true)) }) {
+                return true
+            }
+
+            return lowerDesc.contains("sd") || lowerDesc.contains("card") || lowerDesc.contains("micro") || lowerDesc.contains("tf")
+        }
     }
 
     private val scheduledExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
@@ -58,7 +112,9 @@ class StorageMountManager(private val context: Context) {
         val fsType: String,
         val totalBytes: Long,
         val freeBytes: Long,
-        val hasSafAccess: Boolean = false
+        val hasSafAccess: Boolean = false,
+        val isReadOnlyFs: Boolean = false,
+        val isSdCard: Boolean = false
     )
 
     private data class ExistingMount(
@@ -398,39 +454,73 @@ class StorageMountManager(private val context: Context) {
                             Log.d(TAG, "getPath reflection failed: ${e.message}")
                         }
                     }
-                    if (targetPath == null) {
+                    if (targetPath == null || targetPath.startsWith("/mnt/media_rw") || targetPath.startsWith("/mnt/runtime")) {
+                        targetPath = "/storage/$rawUuid"
+                    }
+                    if (targetPath.startsWith("/mnt/media_rw/")) {
+                        targetPath = targetPath.replace("/mnt/media_rw/", "/storage/")
+                    }
+                    if (!File(targetPath).exists() && File("/storage/$rawUuid").exists()) {
                         targetPath = "/storage/$rawUuid"
                     }
 
-                    // User-friendly dedicated folder right at the root of the SD card/USB drive: /storage/<UUID>/Nextcloud
-                    val rootNextcloudDir = File(targetPath, "Nextcloud")
-                    val isRootWritable = try {
-                        if (!rootNextcloudDir.exists()) rootNextcloudDir.mkdirs()
-                        isDirectoryWritable(rootNextcloudDir)
-                    } catch (_: Exception) {
-                        false
+                    // Determine optimal mount directory:
+                    // When storage permission is granted (or drive root is accessible), mount the bare drive root (/storage/<UUID>)
+                    // This gives users immediate zero-picker access to all existing media/files on the card across Android 8-17.
+                    val driveRootDir = File(targetPath)
+                    val hasStoragePerm = hasExternalStoragePermission()
+
+                    val safManager = SdCardSafManager(context)
+                    val hasSaf = safManager.hasSafAccess(rawUuid)
+                    val treeUri = if (hasSaf) safManager.getSafUri(rawUuid) else null
+
+                    // If user granted access to a subfolder (e.g. Nextcloud), mount that subtree
+                    var effectiveDriveDir = driveRootDir
+                    if (treeUri != null) {
+                        try {
+                            val treeDocId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+                            if (treeDocId.contains(":")) {
+                                val sub = treeDocId.substringAfter(":").trim('/')
+                                if (sub.isNotEmpty()) {
+                                    val subDir = File(driveRootDir, sub)
+                                    if (subDir.exists() || subDir.mkdirs()) {
+                                        effectiveDriveDir = subDir
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {}
                     }
 
-                    // Fallback to app-scoped directory if root is restricted by legacy OS
-                    val matchingAppDir = externalDirs.firstOrNull { it != null && it.absolutePath.contains(rawUuid) }
-                    val appScopedDir = matchingAppDir?.let { File(it, "Nextcloud") }
-                        ?: File("/storage/$rawUuid/Android/data/${context.packageName}/files/Nextcloud")
+                    val isRootWritable = isDirectoryWritable(effectiveDriveDir)
+                    val isReadOnlyFs = state == Environment.MEDIA_MOUNTED_READ_ONLY || fsType.contains("NTFS", ignoreCase = true)
+                    val isActualWritable = !isReadOnlyFs
 
-                    val chosenDir = if (isRootWritable) {
-                        Log.i(TAG, "Using dedicated root folder for $displayName: ${rootNextcloudDir.absolutePath}")
-                        rootNextcloudDir
-                    } else {
-                        Log.i(TAG, "Root folder restricted, falling back to app-scoped dir for $displayName: ${appScopedDir.absolutePath}")
-                        appScopedDir
+                    val (chosenDir, isFullDrive) = when {
+                        isSdCard && effectiveDriveDir.exists() && (hasSaf || isRootWritable || hasStoragePerm || effectiveDriveDir.canRead()) -> {
+                            Log.i(TAG, "Using physical root for MicroSD $displayName: ${effectiveDriveDir.absolutePath}")
+                            Pair(effectiveDriveDir, true)
+                        }
+                        !isSdCard && (hasSaf || isRootWritable) -> {
+                            Log.i(TAG, "Using physical root for USB $displayName (write verified): ${effectiveDriveDir.absolutePath}")
+                            Pair(effectiveDriveDir, true)
+                        }
+                        !isSdCard && Build.VERSION.SDK_INT < Build.VERSION_CODES.R && effectiveDriveDir.exists() && (hasStoragePerm || effectiveDriveDir.canWrite()) -> {
+                            Log.i(TAG, "Using physical root for legacy Android USB $displayName: ${effectiveDriveDir.absolutePath}")
+                            Pair(effectiveDriveDir, true)
+                        }
+                        else -> {
+                            val matchingAppDir = externalDirs.firstOrNull { it != null && it.absolutePath.contains(rawUuid, ignoreCase = true) }
+                            val appScopedDir = matchingAppDir?.let { File(it, "Nextcloud") }
+                                ?: File("/storage/$rawUuid/Android/data/${context.packageName}/files/Nextcloud")
+                            Log.i(TAG, "Using dedicated app-scoped storage for $displayName: ${appScopedDir.absolutePath}")
+                            Pair(appScopedDir, false)
+                        }
                     }
                     ensureDirectoryPermissions(chosenDir)
 
                     val rootFileObj = File(targetPath)
                     val total = if (rootFileObj.totalSpace > 0) rootFileObj.totalSpace else chosenDir.totalSpace
                     val free = if (rootFileObj.freeSpace > 0) rootFileObj.freeSpace else chosenDir.freeSpace
-
-                    val safManager = SdCardSafManager(context)
-                    val hasSaf = safManager.hasSafAccess(rawUuid)
 
                     if (rootFileObj.exists()) {
                         result.add(
@@ -441,12 +531,14 @@ class StorageMountManager(private val context: Context) {
                                 nextcloudMountPoint = displayName,
                                 path = chosenDir.absolutePath,
                                 displayPath = chosenDir.absolutePath,
-                                isFullDrive = isRootWritable,
-                                isWritable = true,
+                                isFullDrive = isFullDrive,
+                                isWritable = isActualWritable,
                                 fsType = fsType,
                                 totalBytes = total,
                                 freeBytes = free,
-                                hasSafAccess = true
+                                hasSafAccess = !isReadOnlyFs,
+                                isReadOnlyFs = isReadOnlyFs,
+                                isSdCard = isSdCard
                             )
                         )
                     }
@@ -475,25 +567,58 @@ class StorageMountManager(private val context: Context) {
 
                             val fsType = getFilesystemType(uuid)
                             val targetPath = "/storage/$uuid"
-                            val rootFile = File(targetPath)
-                            val rootNextcloudDir = File(targetPath, "Nextcloud")
-                            val isRootWritable = try {
-                                if (!rootNextcloudDir.exists()) rootNextcloudDir.mkdirs()
-                                isDirectoryWritable(rootNextcloudDir)
-                            } catch (_: Exception) {
-                                false
-                            }
-                            val appDir = File(dir, "Nextcloud")
-                            val chosenDir = if (isRootWritable) rootNextcloudDir else appDir
-                            ensureDirectoryPermissions(chosenDir)
-
-                            val total = if (rootFile.totalSpace > 0) rootFile.totalSpace else chosenDir.totalSpace
-                            val free = if (rootFile.freeSpace > 0) rootFile.freeSpace else chosenDir.freeSpace
+                            val driveRootDir = File(targetPath)
+                            val hasStoragePerm = hasExternalStoragePermission()
 
                             val safManager = SdCardSafManager(context)
                             val hasSaf = safManager.hasSafAccess(uuid)
+                            val treeUri = if (hasSaf) safManager.getSafUri(uuid) else null
 
-                            if (rootFile.exists()) {
+                            var effectiveDriveDir = driveRootDir
+                            if (treeUri != null) {
+                                try {
+                                    val treeDocId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+                                    if (treeDocId.contains(":")) {
+                                        val sub = treeDocId.substringAfter(":").trim('/')
+                                        if (sub.isNotEmpty()) {
+                                            val subDir = File(driveRootDir, sub)
+                                            if (subDir.exists() || subDir.mkdirs()) {
+                                                effectiveDriveDir = subDir
+                                            }
+                                        }
+                                    }
+                                } catch (_: Exception) {}
+                            }
+
+                            val isRootWritable = isDirectoryWritable(effectiveDriveDir)
+                            val isReadOnlyFs = fsType.contains("NTFS", ignoreCase = true)
+                            val isActualWritable = !isReadOnlyFs
+
+                            val (chosenDir, isFullDrive) = when {
+                                isSdCard && effectiveDriveDir.exists() && (hasSaf || isRootWritable || hasStoragePerm || effectiveDriveDir.canRead()) -> {
+                                    Log.i(TAG, "Using physical root for MicroSD $displayName: ${effectiveDriveDir.absolutePath}")
+                                    Pair(effectiveDriveDir, true)
+                                }
+                                !isSdCard && (hasSaf || isRootWritable) -> {
+                                    Log.i(TAG, "Using physical root for USB $displayName (write verified): ${effectiveDriveDir.absolutePath}")
+                                    Pair(effectiveDriveDir, true)
+                                }
+                                !isSdCard && Build.VERSION.SDK_INT < Build.VERSION_CODES.R && effectiveDriveDir.exists() && (hasStoragePerm || effectiveDriveDir.canWrite()) -> {
+                                    Log.i(TAG, "Using physical root for legacy Android USB $displayName: ${effectiveDriveDir.absolutePath}")
+                                    Pair(effectiveDriveDir, true)
+                                }
+                                else -> {
+                                    val appDir = File(dir, "Nextcloud")
+                                    Log.i(TAG, "Using dedicated app-scoped storage for $displayName: ${appDir.absolutePath}")
+                                    Pair(appDir, false)
+                                }
+                            }
+                            ensureDirectoryPermissions(chosenDir)
+
+                            val total = if (driveRootDir.totalSpace > 0) driveRootDir.totalSpace else chosenDir.totalSpace
+                            val free = if (driveRootDir.freeSpace > 0) driveRootDir.freeSpace else chosenDir.freeSpace
+
+                            if (driveRootDir.exists()) {
                                 result.add(
                                     DetectedStorage(
                                         id = uuid,
@@ -502,12 +627,14 @@ class StorageMountManager(private val context: Context) {
                                         nextcloudMountPoint = displayName,
                                         path = chosenDir.absolutePath,
                                         displayPath = chosenDir.absolutePath,
-                                        isFullDrive = isRootWritable,
-                                        isWritable = true,
+                                        isFullDrive = isFullDrive,
+                                        isWritable = isActualWritable,
                                         fsType = fsType,
                                         totalBytes = total,
                                         freeBytes = free,
-                                        hasSafAccess = true
+                                        hasSafAccess = !isReadOnlyFs,
+                                        isReadOnlyFs = isReadOnlyFs,
+                                        isSdCard = isSdCard
                                     )
                                 )
                             }
@@ -526,49 +653,29 @@ class StorageMountManager(private val context: Context) {
      * StorageVolume ID, and /proc/mounts entries.
      */
     private fun isSdCardVolume(volume: StorageVolume?, uuid: String, desc: String): Boolean {
-        val lowerDesc = desc.lowercase()
-        if (lowerDesc.contains("sd") || lowerDesc.contains("card") || lowerDesc.contains("micro") || lowerDesc.contains("tf")) {
-            return true
-        }
-
-        // 1. StorageVolume ID (e.g. "public:179,0" / "mmc")
+        var volId: String? = null
         if (volume != null) {
             try {
                 val method = volume.javaClass.getMethod("getId")
-                val volId = method.invoke(volume) as? String
-                if (volId != null && (volId.contains("179,") || volId.contains("mmc", ignoreCase = true))) {
-                    return true
-                }
+                volId = method.invoke(volume) as? String
             } catch (_: Exception) {}
         }
 
-        // 2. /proc/mounts inspection for major 179 or mmcblk
-        try {
+        val mountLines = try {
             val mountsFile = File("/proc/mounts")
-            if (mountsFile.exists() && mountsFile.canRead()) {
-                for (line in mountsFile.readLines()) {
-                    if (line.contains(uuid, ignoreCase = true)) {
-                        val lowerLine = line.lowercase()
-                        if (lowerLine.contains("public:179") || lowerLine.contains("mmcblk") || lowerLine.contains("/dev/block/mmc")) {
-                            return true
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
+            if (mountsFile.exists() && mountsFile.canRead()) mountsFile.readLines() else emptyList()
+        } catch (_: Exception) {
+            emptyList<String>()
+        }
 
-        // 3. Check /dev/block/vold for public:179
-        try {
+        val voldEntries = try {
             val voldDir = File("/dev/block/vold")
-            if (voldDir.exists()) {
-                val entries = voldDir.list()
-                if (entries != null && entries.any { it.startsWith("public:179") }) {
-                    return true
-                }
-            }
-        } catch (_: Exception) {}
+            if (voldDir.exists()) voldDir.list()?.toList() ?: emptyList() else emptyList()
+        } catch (_: Exception) {
+            emptyList<String>()
+        }
 
-        return false
+        return isSdCardClassification(desc, volId, mountLines, voldEntries, uuid)
     }
 
     /**
@@ -602,16 +709,7 @@ class StorageMountManager(private val context: Context) {
             if (mountsFile.exists() && mountsFile.canRead()) {
                 for (line in mountsFile.readLines()) {
                     if (line.contains(uuidOrPath, ignoreCase = true)) {
-                        val lower = line.lowercase()
-                        return when {
-                            lower.contains("vfat") || lower.contains("fat32") || lower.contains("msdos") -> "FAT32"
-                            lower.contains("exfat") || lower.contains("fs=exfat") -> "exFAT"
-                            lower.contains("ntfs") || lower.contains("ntfs3") || lower.contains("fuseblk") -> "NTFS"
-                            lower.contains("ext4") -> "ext4"
-                            lower.contains("f2fs") -> "F2FS"
-                            lower.contains("sdfat") -> if (lower.contains("fs=exfat")) "exFAT" else "FAT32"
-                            else -> "FAT32"
-                        }
+                        return parseFilesystemTypeFromMountLine(line)
                     }
                 }
             }
@@ -622,19 +720,34 @@ class StorageMountManager(private val context: Context) {
     }
 
     /**
+     * Checks if the app holds full storage access (MANAGE_EXTERNAL_STORAGE on Android 11+, or WRITE_EXTERNAL_STORAGE on Android 8-10).
+     */
+    private fun hasExternalStoragePermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    /**
      * Checks write permission on a directory safely and definitively using a real probe write test.
      */
     private fun isDirectoryWritable(dir: File): Boolean {
         if (!dir.exists() || !dir.isDirectory) return false
+        val probe = File(dir, "nc_write_probe_${System.currentTimeMillis()}.tmp")
         return try {
-            val probe = File(dir, ".nc_write_probe_${System.currentTimeMillis()}")
             if (probe.createNewFile()) {
                 probe.delete()
                 true
             } else {
                 dir.canWrite()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.d(TAG, "Write probe on ${dir.absolutePath} failed: ${e.message}")
             dir.canWrite()
         }
     }

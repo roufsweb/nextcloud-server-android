@@ -62,3 +62,26 @@ This project is an Android application that runs a self-hosted **Nextcloud Serve
 * **Strict Fresh Install Rule**: Always perform a fresh install when deploying to Android for testing to guarantee a 100% clean state.
 * **Remove Ghost Configs**: Cleanly uninstall existing packages (`adb uninstall com.nextcloud.server`) to completely purge `/data/data/com.nextcloud.server/` (`config.php`, SQLite databases, and SharedPreferences). Purge any residual external directories (`/sdcard/Android/data/com.nextcloud.server/`, `/sdcard/NextcloudData/`) before reinstallation.
 * **Disable Cloud Auto-Backup**: `android:allowBackup="false"` must remain in `AndroidManifest.xml` so Android never silently restores stale ghost configs from Google Drive / Cloud Backup upon reinstall.
+
+---
+
+## 6. Universal Storage & Removable Media Rules (Android 8 through 15+)
+
+### Zero-Click, Out-of-the-Box Experience
+* **No Blocking Pickers / Popups**: Never interrupt users with mandatory SAF folder pickers, bottom sheets, or manual "Grant Access" buttons upon drive hot-plugging.
+* **Auto-Discovery**: Any connected MicroSD card, USB OTG drive, external SSD, or HDD must be automatically detected, mounted, and recognized with `Full Read & Write Access` out of the box.
+
+### Android Version Matrix & Write Strategy
+* **Android 8.0 – 9.0 (API 26 – 28)**:
+  * Uses `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE`.
+  * App belongs to GID `sdcard_rw` (1015), providing direct POSIX root access to FAT32/exFAT partitions.
+  * App-scoped directory `/storage/<UUID>/Android/data/com.nextcloud.server/files/` is 100% writable with zero permissions.
+* **Android 10 (API 29)**:
+  * Uses `android:requestLegacyExternalStorage="true"` to preserve raw direct filesystem access.
+* **Android 11 – 15+ (API 30 – 35+)**:
+  * Uses `MANAGE_EXTERNAL_STORAGE` (All Files Access) for unrestricted read access across all non-private directories on internal and secondary drives.
+  * **MicroSD Cards**: Direct write access to arbitrary paths is mediated by `SdRootMediaStoreBridge` via `MediaStore.Files` (leveraging system `media_rw` daemon privileges).
+  * **USB OTG / External SSD / HDD**: Direct POSIX write is guaranteed within the drive's app-scoped storage path (`/storage/<UUID>/Android/data/com.nextcloud.server/files/data/`) on all Android versions without user prompts.
+* **Filesystem Types & Read-Only Handling**:
+  * Only mark `isReadOnlyFs = true` if the physical filesystem is formatted as NTFS or mounted read-only by the kernel (`volume.state == Environment.MEDIA_MOUNTED_READ_ONLY`).
+  * Normal FAT32, exFAT, and ext4 drives must always be marked `isWritable = true`.

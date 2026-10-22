@@ -25,11 +25,15 @@ class SdCardSafManager(private val context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    private fun normalizeUuid(storageUuid: String): String {
+        return storageUuid.removeSuffix("_root").removeSuffix("_uploads").trim().uppercase()
+    }
+
     /**
      * Persists the SAF tree URI grant permanently across reboots.
      */
     fun saveSafUri(storageUuid: String, uri: Uri) {
-        val cleanUuid = storageUuid.removeSuffix("_root").removeSuffix("_uploads")
+        val cleanUuid = normalizeUuid(storageUuid)
         try {
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             context.contentResolver.takePersistableUriPermission(uri, flags)
@@ -43,10 +47,13 @@ class SdCardSafManager(private val context: Context) {
 
     /**
      * Retrieves the stored SAF tree URI for a storage volume.
+     * Checks normalized uppercase first, falling back to lowercase.
      */
     fun getSafUri(storageUuid: String): Uri? {
-        val cleanUuid = storageUuid.removeSuffix("_root").removeSuffix("_uploads")
-        val uriStr = prefs.getString("$KEY_PREFIX$cleanUuid", null) ?: return null
+        val cleanUuid = normalizeUuid(storageUuid)
+        val uriStr = prefs.getString("$KEY_PREFIX$cleanUuid", null)
+            ?: prefs.getString("$KEY_PREFIX${cleanUuid.lowercase()}", null)
+            ?: return null
         return try {
             Uri.parse(uriStr)
         } catch (e: Exception) {
@@ -80,7 +87,7 @@ class SdCardSafManager(private val context: Context) {
      * Revokes and removes the stored SAF URI.
      */
     fun revokeSafUri(storageUuid: String) {
-        val cleanUuid = storageUuid.removeSuffix("_root").removeSuffix("_uploads")
+        val cleanUuid = normalizeUuid(storageUuid)
         val uri = getSafUri(cleanUuid)
         if (uri != null) {
             try {
@@ -90,7 +97,7 @@ class SdCardSafManager(private val context: Context) {
                 Log.w(TAG, "Error releasing persistable URI for $cleanUuid: ${e.message}")
             }
         }
-        prefs.edit().remove("$KEY_PREFIX$cleanUuid").apply()
+        prefs.edit().remove("$KEY_PREFIX$cleanUuid").remove("$KEY_PREFIX${cleanUuid.lowercase()}").apply()
         Log.i(TAG, "Revoked SAF URI for storage volume: $cleanUuid")
     }
 
@@ -100,7 +107,8 @@ class SdCardSafManager(private val context: Context) {
     fun getAllGrantedStorageUuids(): List<String> {
         return prefs.all.keys
             .filter { it.startsWith(KEY_PREFIX) }
-            .map { it.removePrefix(KEY_PREFIX) }
+            .map { it.removePrefix(KEY_PREFIX).uppercase() }
+            .distinct()
             .filter { hasSafAccess(it) }
     }
 

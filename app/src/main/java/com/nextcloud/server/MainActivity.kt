@@ -161,6 +161,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var pendingSafStorageUuid: String? = null
+    private var activeSafDialog: com.google.android.material.bottomsheet.BottomSheetDialog? = null
 
     private val safPickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -187,8 +188,32 @@ class MainActivity : AppCompatActivity() {
         pendingSafStorageUuid = null
     }
 
-    private fun promptSafAccess(storage: StorageMountManager.DetectedStorage) {
-        SdCardAccessDialog(
+    private fun promptSafAccess(storage: StorageMountManager.DetectedStorage, isAutoPrompt: Boolean = false) {
+        if (isFinishing || isDestroyed) return
+        if (activeSafDialog != null && activeSafDialog?.isShowing == true) {
+            Log.d("MainActivity", "SAF access dialog already displayed, skipping duplicate prompt")
+            return
+        }
+
+        // Physical SD Cards are 100% managed via MediaStore root bridge and MUST NEVER prompt for SAF
+        if (storage.isSdCard || storage.displayName.contains("SD", ignoreCase = true)) {
+            Log.d("MainActivity", "Storage ${storage.id} is an SD Card, skipping SAF prompt")
+            return
+        }
+
+        if (storage.isWritable || storage.isReadOnlyFs) {
+            return
+        }
+
+        val cleanUuid = storage.id.removeSuffix("_root").removeSuffix("_uploads")
+        if (isAutoPrompt && SdCardAccessDialog.wasDialogShown(this, cleanUuid)) {
+            return
+        }
+
+        // Mark immediately in SharedPreferences to prevent re-entrancy from parallel status events
+        SdCardAccessDialog.markDialogShown(this, cleanUuid)
+
+        activeSafDialog = SdCardAccessDialog(
             context = this,
             storage = storage,
             onGrantClicked = { uuid ->
@@ -199,6 +224,9 @@ class MainActivity : AppCompatActivity() {
             onSkipped = { uuid ->
                 SdCardAccessDialog.markDialogShown(this, uuid)
                 refreshStorageAndDomains()
+            },
+            onDismissed = {
+                activeSafDialog = null
             }
         ).show()
     }
@@ -1171,7 +1199,19 @@ class MainActivity : AppCompatActivity() {
 
                         val labelSuffix = if (storage.label.isNotBlank()) " [${storage.label}]" else ""
                         titleView.text = "${storage.displayName}$labelSuffix"
-                        subtitleView.text = if (isSd) "Removable SD card storage" else "Removable USB drive storage"
+
+                        val statusHint = when {
+                            storage.isReadOnlyFs -> "⚠️ Hardware Read-Only (${storage.fsType}) • Needs exFAT/FAT32 format"
+                            else -> "Full Read & Write Access • ${storage.fsType}"
+                        }
+                        subtitleView.text = statusHint
+                        subtitleView.setTextColor(
+                            ContextCompat.getColor(
+                                this@MainActivity,
+                                if (storage.isReadOnlyFs) R.color.m3_danger
+                                else R.color.m3_on_surface_variant
+                            )
+                        )
 
                         pathView.text = storage.displayPath
 
@@ -1190,7 +1230,6 @@ class MainActivity : AppCompatActivity() {
                         storageProgressBar.progress = progress
 
                         val isEnabled = mountManager.isStorageEnabled(storage.id)
-                        val isSafActive = storage.hasSafAccess
                         toggleSwitch.isChecked = isEnabled
 
                         itemView.alpha = if (isEnabled) 1.0f else 0.5f
@@ -1198,8 +1237,14 @@ class MainActivity : AppCompatActivity() {
                         itemView.isClickable = true
                         itemView.isFocusable = true
                         itemView.setOnClickListener {
-                            if (!isSafActive) {
-                                promptSafAccess(storage)
+                            if (storage.isReadOnlyFs) {
+                                MaterialAlertDialogBuilder(this@MainActivity)
+                                    .setTitle("${storage.displayName} is Read-Only")
+                                    .setMessage("This drive is mounted as Read-Only by Android (formatted as NTFS or unplugged without safe removal).\n\nTo allow write access in Nextcloud, reformat the drive as exFAT or FAT32, or run disk error checking (chkdsk) on PC.")
+                                    .setPositiveButton("OK", null)
+                                    .show()
+                            } else {
+                                Toast.makeText(this@MainActivity, "${storage.displayName}: Full read & write access active", Toast.LENGTH_SHORT).show()
                             }
                         }
 
@@ -2031,5 +2076,15 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             false
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            if (activeSafDialog?.isShowing == true) {
+                activeSafDialog?.dismiss()
+            }
+        } catch (_: Exception) {}
+        activeSafDialog = null
     }
 }

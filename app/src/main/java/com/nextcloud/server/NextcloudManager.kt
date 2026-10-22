@@ -969,7 +969,9 @@ ${'$'}CONFIG = [
             }
             env["TMPDIR"] = tmpDir.absolutePath
             val ldPath = BinaryHelper.getLdLibraryPath(context)
-            env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+            if (!ldPath.isNullOrBlank()) {
+                env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+            }
             for ((k, v) in envVars) {
                 env[k] = v
             }
@@ -1002,7 +1004,9 @@ ${'$'}CONFIG = [
             }
             env["TMPDIR"] = tmpDir.absolutePath
             val codeLdPath = BinaryHelper.getLdLibraryPath(context)
-            env["LD_LIBRARY_PATH"] = codeLdPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+            if (!codeLdPath.isNullOrBlank()) {
+                env["LD_LIBRARY_PATH"] = codeLdPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+            }
 
             val process = pb.start()
             val output = process.inputStream.bufferedReader().readText()
@@ -1056,14 +1060,22 @@ ${'$'}CONFIG = [
 
             val localPhp = File(nextcloudDir, "lib/private/Files/Storage/Local.php")
             if (localPhp.exists()) {
-                val content = localPhp.readText()
+                var content = localPhp.readText()
+                var modified = false
                 if (content.contains("\$this->config->getSystemValueBool('localstorage.allowsymlinks', false)")) {
-                    val patched = content.replace(
+                    content = content.replace(
                         "\$this->config->getSystemValueBool('localstorage.allowsymlinks', false)",
                         "\$this->config->getSystemValueBool('localstorage.allowsymlinks', true)"
                     )
-                    localPhp.writeText(patched)
-                    Log.i(TAG, "Patched Local.php: enabled localstorage.allowsymlinks by default for Android.")
+                    modified = true
+                }
+                if (!content.contains("private function bridgeOpenFile")) {
+                    content = patchLocalPhpWithBridge(content)
+                    modified = true
+                }
+                if (modified) {
+                    localPhp.writeText(content)
+                    Log.i(TAG, "Patched Local.php: storage bridge and permissions installed.")
                 }
             }
 
@@ -1081,6 +1093,123 @@ ${'$'}CONFIG = [
         } catch (e: Exception) {
             Log.w(TAG, "Failed to apply core patches: ${e.message}")
         }
+    }
+
+    private fun patchLocalPhpWithBridge(input: String): String {
+        var text = input
+
+        // 1. mkdir delegation
+        text = text.replace(
+            "umask(\$oldMask);\n\t\treturn \$result;\n\t}\n\n\t#[\\Override]\n\tpublic function rmdir",
+            "umask(\$oldMask);\n\t\tif (!\$result && str_starts_with(\$sourcePath, '/storage/')) {\n\t\t\t\$result = \$this->bridgeCommand(\"MKDIR \$sourcePath\\n\");\n\t\t}\n\t\treturn \$result;\n\t}\n\n\t#[\\Override]\n\tpublic function rmdir"
+        )
+
+        // 2. getMetaData permissions
+        text = text.replace(
+            "if (\$statPermissions & 0x0080) {",
+            "\$isStorage = str_starts_with(\$stat['full_path'], '/storage/');\n\t\tif ((\$statPermissions & 0x0080) || \$isStorage) {"
+        ).replace(
+            "if (is_writable(\$parent)) {",
+            "if (is_writable(\$parent) || str_starts_with(\$parent, '/storage/')) {"
+        )
+
+        // 3. isUpdatable, isCreatable, isDeletable
+        text = text.replace(
+            "public function isUpdatable(string \$path): bool {\n\t\treturn is_writable(\$this->getSourcePath(\$path));\n\t}",
+            "public function isUpdatable(string \$path): bool {\n\t\t\$sourcePath = \$this->getSourcePath(\$path);\n\t\tif (str_starts_with(\$sourcePath, '/storage/')) {\n\t\t\treturn true;\n\t\t}\n\t\treturn is_writable(\$sourcePath);\n\t}\n\n\t#[\\Override]\n\tpublic function isCreatable(string \$path): bool {\n\t\t\$sourcePath = \$this->getSourcePath(\$path);\n\t\tif (str_starts_with(\$sourcePath, '/storage/')) {\n\t\t\treturn \$this->is_dir(\$path);\n\t\t}\n\t\treturn parent::isCreatable(\$path);\n\t}\n\n\t#[\\Override]\n\tpublic function isDeletable(string \$path): bool {\n\t\t\$sourcePath = \$this->getSourcePath(\$path);\n\t\tif (str_starts_with(\$sourcePath, '/storage/')) {\n\t\t\treturn true;\n\t\t}\n\t\treturn parent::isDeletable(\$path);\n\t}"
+        )
+
+        // 4. fopen delegation
+        text = text.replace(
+            "\$this->clearRealpathCache(\$sourcePath);\n\t\t\t\t\$result = @fopen(\$sourcePath, \$mode);\n\t\t\t}\n\t\t} finally {",
+            "\$this->clearRealpathCache(\$sourcePath);\n\t\t\t\t\$result = @fopen(\$sourcePath, \$mode);\n\t\t\t}\n\t\t\tif (\$result === false && str_starts_with(\$sourcePath, '/storage/')) {\n\t\t\t\t\$result = \$this->bridgeOpenFile(\$sourcePath, \$mode);\n\t\t\t}\n\t\t} finally {"
+        )
+
+        // 5. file_put_contents delegation
+        text = text.replace(
+            "\$result = file_put_contents(\$this->getSourcePath(\$path), \$data);\n\t\tumask(\$oldMask);\n\t\treturn \$result;",
+            "\$sourcePath = \$this->getSourcePath(\$path);\n\t\t\$result = @file_put_contents(\$sourcePath, \$data);\n\t\tif (\$result === false && str_starts_with(\$sourcePath, '/storage/')) {\n\t\t\t\$stream = \$this->bridgeOpenFile(\$sourcePath, 'w');\n\t\t\tif (\$stream) {\n\t\t\t\tif (is_resource(\$data)) {\n\t\t\t\t\t\$result = stream_copy_to_stream(\$data, \$stream);\n\t\t\t\t} else {\n\t\t\t\t\t\$result = fwrite(\$stream, \$data);\n\t\t\t\t}\n\t\t\t\tfclose(\$stream);\n\t\t\t}\n\t\t}\n\t\tumask(\$oldMask);\n\t\treturn \$result;"
+        )
+
+        // 6. rmdir delegation
+        text = text.replace(
+            "public function rmdir(string \$path): bool {\n\t\tif (!\$this->isDeletable(\$path)) {\n\t\t\treturn false;\n\t\t}\n\t\ttry {",
+            "public function rmdir(string \$path): bool {\n\t\tif (!\$this->isDeletable(\$path)) {\n\t\t\treturn false;\n\t\t}\n\t\t\$sourcePath = \$this->getSourcePath(\$path);\n\t\tif (str_starts_with(\$sourcePath, '/storage/')) {\n\t\t\t\$delResult = \$this->bridgeCommand(\"DELETE \$sourcePath\\n\");\n\t\t\tclearstatcache(true, \$sourcePath);\n\t\t\treturn \$delResult;\n\t\t}\n\t\ttry {"
+        )
+
+        // 7. unlink delegation
+        text = text.replace(
+            "public function unlink(string \$path): bool {\n\t\tif (\$this->is_dir(\$path)) {\n\t\t\treturn \$this->rmdir(\$path);\n\t\t} elseif (\$this->is_file(\$path)) {\n\t\t\treturn unlink(\$this->getSourcePath(\$path));\n\t\t} else {\n\t\t\treturn false;\n\t\t}\n\t}",
+            "public function unlink(string \$path): bool {\n\t\t\$sourcePath = \$this->getSourcePath(\$path);\n\t\tif (\$this->is_dir(\$path)) {\n\t\t\treturn \$this->rmdir(\$path);\n\t\t} elseif (\$this->is_file(\$path)) {\n\t\t\t\$result = @unlink(\$sourcePath);\n\t\t\tif (!\$result && str_starts_with(\$sourcePath, '/storage/')) {\n\t\t\t\t\$result = \$this->bridgeCommand(\"DELETE \$sourcePath\\n\");\n\t\t\t}\n\t\t\treturn \$result;\n\t\t} else {\n\t\t\tif (str_starts_with(\$sourcePath, '/storage/')) {\n\t\t\t\treturn \$this->bridgeCommand(\"DELETE \$sourcePath\\n\");\n\t\t\t}\n\t\t\treturn false;\n\t\t}\n\t}"
+        )
+
+        // 8. rename delegation
+        text = text.replace(
+            "if (@rename(\$absoluteSource, \$absoluteTarget)) {\n\t\t\tif (\$this->caseInsensitive) {\n\t\t\t\tif (mb_strtolower(\$target) === mb_strtolower(\$source) && !\$this->file_exists(\$target)) {\n\t\t\t\t\treturn false;\n\t\t\t\t}\n\t\t\t}\n\t\t\treturn true;\n\t\t} else {",
+            "if (@rename(\$absoluteSource, \$absoluteTarget)) {\n\t\t\tif (\$this->caseInsensitive) {\n\t\t\t\tif (mb_strtolower(\$target) === mb_strtolower(\$source) && !\$this->file_exists(\$target)) {\n\t\t\t\t\treturn false;\n\t\t\t\t}\n\t\t\t}\n\t\t\treturn true;\n\t\t}\n\t\tif (str_starts_with(\$absoluteSource, '/storage/') || str_starts_with(\$absoluteTarget, '/storage/')) {\n\t\t\tif (\$this->bridgeCommand(\"RENAME \$absoluteSource \$absoluteTarget\\n\")) {\n\t\t\t\tclearstatcache(true, \$absoluteSource);\n\t\t\t\tclearstatcache(true, \$absoluteTarget);\n\t\t\t\treturn true;\n\t\t\t}\n\t\t} else {"
+        )
+
+        // 9. copy delegation
+        text = text.replace(
+            "\$result = copy(\$this->getSourcePath(\$source), \$this->getSourcePath(\$target));\n\t\tumask(\$oldMask);",
+            "\$result = @copy(\$this->getSourcePath(\$source), \$this->getSourcePath(\$target));\n\t\tif (!\$result && str_starts_with(\$this->getSourcePath(\$target), '/storage/')) {\n\t\t\t\$inStream = @fopen(\$this->getSourcePath(\$source), 'rb');\n\t\t\t\$outStream = \$this->bridgeOpenFile(\$this->getSourcePath(\$target), 'w');\n\t\t\tif (\$inStream && \$outStream) {\n\t\t\t\t\$result = stream_copy_to_stream(\$inStream, \$outStream) !== false;\n\t\t\t}\n\t\t\tif (\$inStream) fclose(\$inStream);\n\t\t\tif (\$outStream) fclose(\$outStream);\n\t\t}\n\t\tumask(\$oldMask);"
+        )
+
+        // 10. Bridge helper methods before closing brace
+        if (!text.contains("private function bridgeOpenFile")) {
+            val closingBraceIdx = text.lastIndexOf('}')
+            if (closingBraceIdx != -1) {
+                val bridgeHelpers = """
+	private function bridgeOpenFile(string ${'$'}sourcePath, string ${'$'}mode) {
+		${'$'}sock = @socket_create(AF_UNIX, SOCK_STREAM, 0);
+		if (!${'$'}sock) return false;
+		if (!@socket_connect(${'$'}sock, "\0com.nextcloud.server.saf_bridge")) {
+			@socket_close(${'$'}sock);
+			return false;
+		}
+		${'$'}bridgeMode = (str_contains(${'$'}mode, 'w') || str_contains(${'$'}mode, 'a') || str_contains(${'$'}mode, '+')) ? 'w' : 'r';
+		${'$'}cmd = "OPEN ${'$'}bridgeMode ${'$'}sourcePath\n";
+		@socket_write(${'$'}sock, ${'$'}cmd, strlen(${'$'}cmd));
+
+		${'$'}controllen = function_exists('socket_cmsg_space') ? socket_cmsg_space(SOL_SOCKET, SCM_RIGHTS, 1) : 32;
+		${'$'}msg = [
+			'name' => [],
+			'buffer_size' => 1024,
+			'controllen' => ${'$'}controllen,
+		];
+		${'$'}bytes = @socket_recvmsg(${'$'}sock, ${'$'}msg, 0);
+		@socket_close(${'$'}sock);
+
+		if (!empty(${'$'}msg['control'][0]['data'][0])) {
+			${'$'}res = ${'$'}msg['control'][0]['data'][0];
+			if (is_object(${'$'}res) && function_exists('socket_export_stream')) {
+				return @socket_export_stream(${'$'}res);
+			}
+			return ${'$'}res;
+		}
+		return false;
+	}
+
+	private function bridgeCommand(string ${'$'}cmd): bool {
+		${'$'}sock = @socket_create(AF_UNIX, SOCK_STREAM, 0);
+		if (!${'$'}sock) return false;
+		if (!@socket_connect(${'$'}sock, "\0com.nextcloud.server.saf_bridge")) {
+			@socket_close(${'$'}sock);
+			return false;
+		}
+		@socket_write(${'$'}sock, ${'$'}cmd, strlen(${'$'}cmd));
+		${'$'}resp = '';
+		${'$'}bytes = @socket_recv(${'$'}sock, ${'$'}resp, 1, 0);
+		@socket_close(${'$'}sock);
+		return (${'$'}bytes > 0 && ord(${'$'}resp[0]) === 1);
+	}
+}
+"""
+                text = text.substring(0, closingBraceIdx) + bridgeHelpers
+            }
+        }
+
+        return text
     }
 }
 

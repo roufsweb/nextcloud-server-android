@@ -26,7 +26,9 @@ class CronWorker(context: Context, workerParams: WorkerParameters) : Worker(cont
             }
             env["TMPDIR"] = tmpDir.absolutePath
             val ldPath = BinaryHelper.getLdLibraryPath(applicationContext)
-            env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+            if (!ldPath.isNullOrBlank()) {
+                env["LD_LIBRARY_PATH"] = ldPath + (env["LD_LIBRARY_PATH"]?.let { ":$it" } ?: "")
+            }
 
             val process = pb.start()
             val exitCode = process.waitFor()

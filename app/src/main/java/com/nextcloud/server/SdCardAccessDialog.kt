@@ -23,10 +23,15 @@ class SdCardAccessDialog(
     private val context: Context,
     private val storage: StorageMountManager.DetectedStorage,
     private val onGrantClicked: (storageUuid: String) -> Unit,
-    private val onSkipped: ((storageUuid: String) -> Unit)? = null
+    private val onSkipped: ((storageUuid: String) -> Unit)? = null,
+    private val onDismissed: (() -> Unit)? = null
 ) {
 
-    fun show() {
+    fun show(): BottomSheetDialog {
+        val cleanUuid = storage.id.removeSuffix("_root").removeSuffix("_uploads")
+        // Mark immediately so concurrent broadcast receivers or status updates cannot stack multiple dialogs
+        markDialogShown(context, cleanUuid)
+
         val dialog = BottomSheetDialog(context)
         val view = LayoutInflater.from(context).inflate(R.layout.dialog_saf_access_grant, null)
         dialog.setContentView(view)
@@ -38,8 +43,7 @@ class SdCardAccessDialog(
         val grantButton = view.findViewById<MaterialButton>(R.id.safGrantButton)
         val skipButton = view.findViewById<MaterialButton>(R.id.safSkipButton)
 
-        val cleanUuid = storage.id.removeSuffix("_root").removeSuffix("_uploads")
-        val isSd = storage.displayName.contains("SD", ignoreCase = true)
+        val isSd = storage.isSdCard || storage.displayName.contains("SD", ignoreCase = true)
         iconView.setImageResource(if (isSd) R.drawable.ic_sd_storage else R.drawable.ic_usb)
 
         val driveName = storage.displayName + if (storage.label.isNotBlank()) " [${storage.label}]" else ""
@@ -65,9 +69,11 @@ class SdCardAccessDialog(
 
         dialog.setOnDismissListener {
             markDialogShown(context, cleanUuid)
+            onDismissed?.invoke()
         }
 
         dialog.show()
+        return dialog
     }
 
     companion object {
@@ -103,7 +109,9 @@ class SdCardAccessDialog(
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 // Android 10+ (API 29+): Official volume-specific picker intent
-                val matchingVolume = storageManager.storageVolumes.firstOrNull { it.uuid == cleanUuid }
+                val matchingVolume = storageManager.storageVolumes.firstOrNull { 
+                    it.uuid != null && it.uuid.equals(cleanUuid, ignoreCase = true) 
+                }
                 if (matchingVolume != null) {
                     val intent = matchingVolume.createOpenDocumentTreeIntent()
                     intent.addFlags(
