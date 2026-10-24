@@ -267,11 +267,14 @@ class NextcloudServerService : Service() {
             }
             nextcloudManager.ensureAppStoreAndAppsConfig()
             nextcloudManager.ensureCoreAppsEnabled()
+            nextcloudManager.configurePreviewSettings()
             try {
                 nextcloudManager.executeOcc("config:system:set", "check_data_directory_permissions", "--value=false", "--type=boolean")
                 nextcloudManager.executeOcc("config:system:set", "tempdirectory", "--value=" + tmpDir.absolutePath)
+                // Clean up any stale/orphaned locks in SQLite from interrupted uploads
+                nextcloudManager.clearStaleFileLocks()
             } catch (e: Exception) {
-                Log.w("NextcloudServer", "Error setting tempdirectory in config: ${e.message}")
+                Log.w("NextcloudServer", "Error setting tempdirectory or clearing locks: ${e.message}")
             }
         }
     }

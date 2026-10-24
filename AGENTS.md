@@ -55,17 +55,24 @@ This project is an Android application that runs a self-hosted **Nextcloud Serve
 * Build Debug APK: `.\gradlew.bat assembleDebug`
 * Run dry-run checks: `.\gradlew.bat assembleDebug --dry-run`
 * Check Gradle tasks: `.\gradlew.bat tasks`
+* Refresh Architecture Index & Connection Graph: `python scripts/generate_codebase_index.py`
 
 ---
 
-## 5. Testing & Clean Installation Protocol
+## 5. Architectural Index & Sequential Edit Guardrail
+* **Token-Efficient Index**: Reference `.agents/skills/codebase-architecture-map/CODEBASE_INDEX.md` prior to scanning files.
+* **Sequential Edit Chains**: When editing files in connected flows (e.g. preferences ➔ service ➔ UI), the sequential order in `CONNECTION_GRAPH.md` must be observed.
+* **Guardrail Self-Check**: Before finishing code changes, assume an edit in a connected file broke downstream dependencies and explicitly verify state and intent synchronization.
+* **Sync Frequency**: Run `python scripts/generate_codebase_index.py` after multi-file edits to keep the architecture map in sync.
+
+## 6. Testing & Clean Installation Protocol
 * **Strict Fresh Install Rule**: Always perform a fresh install when deploying to Android for testing to guarantee a 100% clean state.
 * **Remove Ghost Configs**: Cleanly uninstall existing packages (`adb uninstall com.nextcloud.server`) to completely purge `/data/data/com.nextcloud.server/` (`config.php`, SQLite databases, and SharedPreferences). Purge any residual external directories (`/sdcard/Android/data/com.nextcloud.server/`, `/sdcard/NextcloudData/`) before reinstallation.
 * **Disable Cloud Auto-Backup**: `android:allowBackup="false"` must remain in `AndroidManifest.xml` so Android never silently restores stale ghost configs from Google Drive / Cloud Backup upon reinstall.
 
 ---
 
-## 6. Universal Storage & Removable Media Rules (Android 8 through 15+)
+## 7. Universal Storage & Removable Media Rules (Android 8 through 15+)
 
 ### Zero-Click, Out-of-the-Box Experience
 * **No Blocking Pickers / Popups**: Never interrupt users with mandatory SAF folder pickers, bottom sheets, or manual "Grant Access" buttons upon drive hot-plugging.

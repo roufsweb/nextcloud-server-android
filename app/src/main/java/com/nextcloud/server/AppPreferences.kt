@@ -76,4 +76,8 @@ class AppPreferences(context: Context) {
     var isServerRunning: Boolean
         get() = prefs.getBoolean("server_running", false)
         set(value) = prefs.edit().putBoolean("server_running", value).apply()
+
+    var isInternalStorageMountEnabled: Boolean
+        get() = prefs.getBoolean("internal_storage_mount_enabled", true)
+        set(value) = prefs.edit().putBoolean("internal_storage_mount_enabled", value).apply()
 }

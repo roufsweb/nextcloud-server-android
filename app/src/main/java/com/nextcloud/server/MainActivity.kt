@@ -419,6 +419,21 @@ class MainActivity : AppCompatActivity() {
         loadSavedConfig()
         requestStoragePermissionsIfNeeded()
         refreshStorageAndDomains()
+
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("autostart", false) == true || intent?.action == "com.nextcloud.server.START_SERVER") {
+            val port = intent.getIntExtra("port", prefs.getInt("server_port", 8000))
+            launchServerService(port)
+        }
     }
 
     private fun applySavedTheme() {
@@ -1180,7 +1195,7 @@ class MainActivity : AppCompatActivity() {
                 if (hasRemovable) {
                     removableStorageSectionTitle.visibility = View.VISIBLE
                     connectedDrivesCard.visibility = View.VISIBLE
-                    quickStorageUsageText.text = "$usedGb used • $freeGb • ${storages.size} external drive(s)"
+                    quickStorageUsageText.text = "$usedGb used • $freeGb • ${storages.size} storage volume(s)"
 
                     externalDrivesContainer.removeAllViews()
                     for ((index, storage) in storages.withIndex()) {
@@ -1194,8 +1209,12 @@ class MainActivity : AppCompatActivity() {
                         val storageFreeText = itemView.findViewById<TextView>(R.id.driveStorageFreeText)
                         val storageProgressBar = itemView.findViewById<com.google.android.material.progressindicator.LinearProgressIndicator>(R.id.driveStorageProgressBar)
 
-                        val isSd = storage.displayName.contains("SD", ignoreCase = true)
-                        iconView.setImageResource(if (isSd) R.drawable.ic_sd_storage else R.drawable.ic_usb)
+                        val iconRes = when {
+                            storage.id == "primary_internal" || storage.displayName.contains("Phone", ignoreCase = true) -> R.drawable.ic_storage
+                            storage.displayName.contains("SD", ignoreCase = true) -> R.drawable.ic_sd_storage
+                            else -> R.drawable.ic_usb
+                        }
+                        iconView.setImageResource(iconRes)
 
                         val labelSuffix = if (storage.label.isNotBlank()) " [${storage.label}]" else ""
                         titleView.text = "${storage.displayName}$labelSuffix"

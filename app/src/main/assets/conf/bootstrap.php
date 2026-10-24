@@ -4,7 +4,9 @@
  * Provides essential polyfills and stubs for embedded mobile server runtime.
  */
 
-// Polyfill GD stubs so Nextcloud installer and apps function cleanly without crashing
+// Only provide fallback GD stubs if the native GD extension is not loaded.
+// When native gd.so is loaded, native PHP functions handle all thumbnail and image rendering.
+if (!extension_loaded('gd')) {
 if (!function_exists('gd_info')) {
     function gd_info(): array {
         return [
@@ -115,3 +117,5 @@ if (!function_exists('imagegif')) {
         return false;
     }
 }
+} // end of !extension_loaded('gd')
+

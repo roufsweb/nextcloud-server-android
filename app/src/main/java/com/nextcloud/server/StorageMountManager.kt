@@ -124,14 +124,22 @@ class StorageMountManager(private val context: Context) {
     )
 
     fun isStorageEnabled(storageId: String): Boolean {
-        val prefs = AppPreferences(context).sharedPreferences
+        val appPrefs = AppPreferences(context)
+        val prefs = appPrefs.sharedPreferences
         val baseId = storageId.removeSuffix("_media").removeSuffix("_root").removeSuffix("_uploads")
+        if (baseId == "primary_internal") {
+            return appPrefs.isInternalStorageMountEnabled && prefs.getBoolean("ext_storage_enabled_primary_internal", true)
+        }
         return prefs.getBoolean("ext_storage_enabled_$baseId", true)
     }
 
     fun setStorageEnabled(storageId: String, enabled: Boolean) {
-        val prefs = AppPreferences(context).sharedPreferences
+        val appPrefs = AppPreferences(context)
+        val prefs = appPrefs.sharedPreferences
         val baseId = storageId.removeSuffix("_media").removeSuffix("_root").removeSuffix("_uploads")
+        if (baseId == "primary_internal") {
+            appPrefs.isInternalStorageMountEnabled = enabled
+        }
         prefs.edit().putBoolean("ext_storage_enabled_$baseId", enabled).apply()
         scheduleDebouncedSync()
     }
@@ -396,6 +404,36 @@ class StorageMountManager(private val context: Context) {
         var usbCount = 0
         var ssdCount = 0
         val processedIds = mutableSetOf<String>()
+
+        // Pass 0: Primary Internal Shared Storage (/storage/emulated/0)
+        val appPrefs = AppPreferences(context)
+        if (appPrefs.isInternalStorageMountEnabled) {
+            val primaryDir = Environment.getExternalStorageDirectory()
+            if (primaryDir != null && primaryDir.exists()) {
+                val total = primaryDir.totalSpace
+                val free = primaryDir.freeSpace
+                val isWritable = isDirectoryWritable(primaryDir) || hasExternalStoragePermission()
+                processedIds.add("primary_internal")
+                result.add(
+                    DetectedStorage(
+                        id = "primary_internal",
+                        label = "Internal Storage",
+                        displayName = "Phone Storage",
+                        nextcloudMountPoint = "Phone Storage",
+                        path = primaryDir.absolutePath,
+                        displayPath = primaryDir.absolutePath,
+                        isFullDrive = true,
+                        isWritable = isWritable,
+                        fsType = "ext4/F2FS",
+                        totalBytes = total,
+                        freeBytes = free,
+                        hasSafAccess = true,
+                        isReadOnlyFs = false,
+                        isSdCard = false
+                    )
+                )
+            }
+        }
 
         // Pass 1: Discover via StorageManager.storageVolumes (Universal Android API 24+)
         for (volume in volumes) {

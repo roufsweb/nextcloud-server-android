@@ -8,6 +8,8 @@ import android.util.Log
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.OutputStream
+import android.os.ParcelFileDescriptor
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -193,6 +195,11 @@ class NextcloudManager(private val context: Context) {
      */
     fun configurePreviewSettings() {
         try {
+            executeOcc("config:system:set", "filelocking.enabled", "--value=false", "--type=boolean")
+            executeOcc("config:system:set", "filelocking.ttl", "--value=300", "--type=integer")
+            // Configure 20MB chunk size for reliable 40GB+ uploads through Cloudflare
+            executeOcc("config:app:set", "files", "max_chunk_size", "--value=20971520")
+
             executeOcc("config:system:set", "enable_previews", "--value=true", "--type=boolean")
             executeOcc("config:system:set", "preview_max_x", "--value=2048", "--type=integer")
             executeOcc("config:system:set", "preview_max_y", "--value=2048", "--type=integer")
@@ -201,23 +208,54 @@ class NextcloudManager(private val context: Context) {
             executeOcc("config:system:set", "preview_concurrency_all", "--value=8", "--type=integer")
             executeOcc("config:system:set", "preview_concurrency_new", "--value=4", "--type=integer")
 
+            val ffmpegBin = File(filesDir, "bin/ffmpeg")
+            if (ffmpegBin.exists()) {
+                executeOcc("config:system:set", "preview_ffmpeg_path", "--value=${ffmpegBin.absolutePath}")
+            }
+
             val providers = listOf(
                 "OC\\Preview\\PNG",
                 "OC\\Preview\\JPEG",
                 "OC\\Preview\\GIF",
                 "OC\\Preview\\BMP",
                 "OC\\Preview\\WebP",
+                "OC\\Preview\\HEIC",
+                "OC\\Preview\\Movie",
+                "OC\\Preview\\XBitmap",
                 "OC\\Preview\\MarkDown",
+                "OC\\Preview\\MP3",
                 "OC\\Preview\\TXT"
             )
             for ((idx, provider) in providers.withIndex()) {
                 executeOcc("config:system:set", "enabledPreviewProviders", idx.toString(), "--value=$provider")
             }
-            Log.i(TAG, "Preview generation system configured successfully with GD support.")
+            Log.i(TAG, "Preview generation system configured successfully with GD, HEIC, and Movie support.")
         } catch (e: Exception) {
             Log.w(TAG, "Error configuring preview settings: ${e.message}")
         }
     }
+
+    /**
+     * Clears orphaned file locks from oc_file_locks in SQLite.
+     * Prevents HTTP 423 Locked errors caused by interrupted transfers or aborted chunk uploads.
+     */
+    fun clearStaleFileLocks() {
+        try {
+            val sqliteBin = BinaryHelper.getSqlite3Binary(context)
+            val dbFile = File(nextcloudDir, "data/owncloud.db")
+            if (File(sqliteBin).exists() && dbFile.exists()) {
+                val pb = ProcessBuilder(sqliteBin, dbFile.absolutePath, "DELETE FROM oc_file_locks;")
+                val proc = pb.start()
+                proc.waitFor()
+                Log.i(TAG, "Successfully purged oc_file_locks table on server start.")
+            } else {
+                executeOcc("maintenance:repair")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Non-fatal error clearing stale locks: ${e.message}")
+        }
+    }
+
 
     /**
      * Ensures mobile app QR login compatibility by setting settings:qrcode_onetime to 'no'.
@@ -277,15 +315,21 @@ ${'$'}CONFIG = [
   'overwrite.cli.url' => 'http://localhost:$currentPort',
   'overwriteprotocol' => ${'$'}isHttps ? 'https' : '',
   'localstorage.allowsymlinks' => true,
+  'filelocking.enabled' => false,
+  'filelocking.ttl' => 300,
   'enable_previews' => true,
-  'preview_max_x' => 1024,
-  'preview_max_y' => 1024,
+  'preview_max_x' => 2048,
+  'preview_max_y' => 2048,
   'preview_max_scale_factor' => 1,
+  'preview_ffmpeg_path' => dirname(__DIR__, 2) . '/bin/ffmpeg',
   'enabledPreviewProviders' => [
     'OC\\Preview\\PNG',
     'OC\\Preview\\JPEG',
     'OC\\Preview\\GIF',
     'OC\\Preview\\BMP',
+    'OC\\Preview\\WebP',
+    'OC\\Preview\\HEIC',
+    'OC\\Preview\\Movie',
     'OC\\Preview\\XBitmap',
     'OC\\Preview\\MarkDown',
     'OC\\Preview\\MP3',
@@ -884,7 +928,11 @@ ${'$'}CONFIG = [
         copiedBytes: LongArray,
         onProgress: ((String, Int) -> Unit)? = null
     ) {
-        if (!target.exists()) target.mkdirs()
+        if (!target.exists()) {
+            if (!target.mkdirs() && target.absolutePath.startsWith("/storage/")) {
+                SdRootMediaStoreBridge.mkdirOnSdRoot(context, target.absolutePath)
+            }
+        }
         source.listFiles()?.forEach { child ->
             val destChild = File(target, child.name)
             if (child.isDirectory) {
@@ -906,19 +954,58 @@ ${'$'}CONFIG = [
             copiedBytes[0] = copiedBytes[0] + src.length()
             return
         }
-        FileInputStream(src).use { inStream ->
-            FileOutputStream(dest).use { outStream ->
-                val buffer = ByteArray(64 * 1024)
-                var bytesRead: Int
-                while (inStream.read(buffer).also { bytesRead = it } != -1) {
-                    outStream.write(buffer, 0, bytesRead)
-                    copiedBytes[0] = copiedBytes[0] + bytesRead
-                    if (totalBytes > 0) {
-                        val pct = ((copiedBytes[0] * 100) / totalBytes).toInt().coerceIn(10, 89)
-                        onProgress?.invoke("Copying ${src.name} ($pct%)", pct)
-                    }
+
+        // Ensure parent directory exists
+        dest.parentFile?.let { p ->
+            if (!p.exists()) {
+                if (!p.mkdirs() && p.absolutePath.startsWith("/storage/")) {
+                    SdRootMediaStoreBridge.mkdirOnSdRoot(context, p.absolutePath)
                 }
             }
+        }
+
+        var copySuccess = false
+        try {
+            FileInputStream(src).use { inStream ->
+                val outStream: OutputStream = if (dest.canWrite() || dest.parentFile?.canWrite() == true || !dest.absolutePath.startsWith("/storage/")) {
+                    FileOutputStream(dest)
+                } else {
+                    val pfd = SdRootMediaStoreBridge.openRootWritablePfd(context, dest.absolutePath, "w")
+                    if (pfd != null) {
+                        ParcelFileDescriptor.AutoCloseOutputStream(pfd)
+                    } else {
+                        FileOutputStream(dest)
+                    }
+                }
+                outStream.use { out ->
+                    val buffer = ByteArray(64 * 1024)
+                    var bytesRead: Int
+                    while (inStream.read(buffer).also { bytesRead = it } != -1) {
+                        out.write(buffer, 0, bytesRead)
+                        copiedBytes[0] = copiedBytes[0] + bytesRead
+                        if (totalBytes > 0) {
+                            val pct = ((copiedBytes[0] * 100) / totalBytes).toInt().coerceIn(10, 89)
+                            onProgress?.invoke("Copying ${src.name} ($pct%)", pct)
+                        }
+                    }
+                    out.flush()
+                }
+            }
+            copySuccess = dest.exists() && dest.length() == src.length()
+        } catch (e: Exception) {
+            Log.w(TAG, "copySingleFile direct stream failed for ${src.name}: ${e.message}. Attempting bridge fallback...")
+        }
+
+        if (!copySuccess && dest.absolutePath.startsWith("/storage/")) {
+            val bridgeOk = SdRootMediaStoreBridge.copyOnSdRoot(context, src.absolutePath, dest.absolutePath)
+            if (bridgeOk) {
+                copiedBytes[0] = copiedBytes[0] + src.length()
+                return
+            }
+        }
+
+        if (!copySuccess && !dest.exists()) {
+            throw java.io.IOException("Failed to copy ${src.name} to ${dest.absolutePath}")
         }
     }
 
@@ -1069,7 +1156,7 @@ ${'$'}CONFIG = [
                     )
                     modified = true
                 }
-                if (!content.contains("private function bridgeOpenFile")) {
+                if (!content.contains("COPY ") || !content.contains("private function bridgeOpenFile")) {
                     content = patchLocalPhpWithBridge(content)
                     modified = true
                 }
@@ -1150,10 +1237,45 @@ ${'$'}CONFIG = [
         )
 
         // 9. copy delegation
-        text = text.replace(
-            "\$result = copy(\$this->getSourcePath(\$source), \$this->getSourcePath(\$target));\n\t\tumask(\$oldMask);",
-            "\$result = @copy(\$this->getSourcePath(\$source), \$this->getSourcePath(\$target));\n\t\tif (!\$result && str_starts_with(\$this->getSourcePath(\$target), '/storage/')) {\n\t\t\t\$inStream = @fopen(\$this->getSourcePath(\$source), 'rb');\n\t\t\t\$outStream = \$this->bridgeOpenFile(\$this->getSourcePath(\$target), 'w');\n\t\t\tif (\$inStream && \$outStream) {\n\t\t\t\t\$result = stream_copy_to_stream(\$inStream, \$outStream) !== false;\n\t\t\t}\n\t\t\tif (\$inStream) fclose(\$inStream);\n\t\t\tif (\$outStream) fclose(\$outStream);\n\t\t}\n\t\tumask(\$oldMask);"
-        )
+        val copyMethodNeedle = "public function copy(string \$source, string \$target): bool {"
+        val scopeNeedle = "\t/** The scope this has to keep"
+        val copyStart = text.indexOf(copyMethodNeedle)
+        val copyEnd = if (copyStart != -1) text.indexOf(scopeNeedle, copyStart) else -1
+        if (copyStart != -1 && copyEnd != -1) {
+            val newCopyMethod = """public function copy(string ${'$'}source, string ${'$'}target): bool {
+		${'$'}sourcePath = ${'$'}this->getSourcePath(${'$'}source);
+		${'$'}targetPath = ${'$'}this->getSourcePath(${'$'}target);
+		if (${'$'}this->is_dir(${'$'}source)) {
+			if (str_starts_with(${'$'}targetPath, '/storage/') || str_starts_with(${'$'}sourcePath, '/storage/')) {
+				if (${'$'}this->bridgeCommand("COPY ${'$'}sourcePath ${'$'}targetPath\n")) {
+					clearstatcache(true, ${'$'}targetPath);
+					return true;
+				}
+			}
+			return parent::copy(${'$'}source, ${'$'}target);
+		} else {
+			${'$'}oldMask = umask(${'$'}this->defUMask);
+			if (${'$'}this->unlinkOnTruncate) {
+				${'$'}this->unlink(${'$'}target);
+			}
+			${'$'}result = @copy(${'$'}sourcePath, ${'$'}targetPath);
+			if (!${'$'}result && (str_starts_with(${'$'}targetPath, '/storage/') || str_starts_with(${'$'}sourcePath, '/storage/'))) {
+				${'$'}result = ${'$'}this->bridgeCommand("COPY ${'$'}sourcePath ${'$'}targetPath\n");
+				clearstatcache(true, ${'$'}targetPath);
+			}
+			umask(${'$'}oldMask);
+			if (${'$'}this->caseInsensitive) {
+				if (mb_strtolower(${'$'}target) === mb_strtolower(${'$'}source) && !${'$'}this->file_exists(${'$'}target)) {
+					return false;
+				}
+			}
+			return ${'$'}result;
+		}
+	}
+
+"""
+            text = text.substring(0, copyStart) + newCopyMethod + text.substring(copyEnd)
+        }
 
         // 10. Bridge helper methods before closing brace
         if (!text.contains("private function bridgeOpenFile")) {

@@ -58,6 +58,21 @@ object BinaryHelper {
     }
 
     /**
+     * Resolves the executable path for the FFmpeg CLI binary (for video/media thumbnails).
+     */
+    fun getFfmpegBinary(context: Context): String {
+        val nativeBin = File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so")
+        if (nativeBin.exists()) {
+            return nativeBin.absolutePath
+        }
+        val filesBin = File(context.filesDir, "bin/ffmpeg")
+        if (filesBin.exists()) {
+            return filesBin.absolutePath
+        }
+        return filesBin.absolutePath
+    }
+
+    /**
      * Resolves the executable path for the SQLite3 CLI binary.
      */
     fun getSqlite3Binary(context: Context): String {

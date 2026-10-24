@@ -115,6 +115,14 @@ object SdRootMediaStoreBridge {
                         output.write(if (success) 1 else 0)
                         output.flush()
                     }
+                    "COPY" -> {
+                        // Protocol: COPY <src_path> <dst_path>
+                        val src = if (parts.size >= 2) parts[1] else ""
+                        val dst = if (parts.size >= 3) parts[2] else ""
+                        val success = copyOnSdRoot(context, src, dst)
+                        output.write(if (success) 1 else 0)
+                        output.flush()
+                    }
                     "PING" -> {
                         output.write("PONG\n".toByteArray(Charsets.UTF_8))
                         output.flush()
@@ -588,6 +596,94 @@ object SdRootMediaStoreBridge {
                 }
             } catch (_: Exception) {}
         }
+        return false
+    }
+
+    /**
+     * Copies a file or directory on /storage/<UUID>/ across Android 8 through 17.
+     */
+    fun copyOnSdRoot(context: Context, src: String, dst: String): Boolean {
+        val srcFile = File(src)
+        val dstFile = File(dst)
+        if (!srcFile.exists()) return false
+
+        // Ensure parent directory exists for destination
+        val dstParent = dstFile.parentFile
+        if (dstParent != null && !dstParent.exists()) {
+            if (!dstParent.mkdirs() && dst.startsWith("/storage/")) {
+                mkdirOnSdRoot(context, dstParent.absolutePath)
+            }
+        }
+
+        // 1. Directory copying across storage / SD root
+        if (srcFile.isDirectory) {
+            if (!mkdirOnSdRoot(context, dst)) return false
+            val children = srcFile.listFiles() ?: return true
+            for (child in children) {
+                val childDst = File(dstFile, child.name).absolutePath
+                if (!copyOnSdRoot(context, child.absolutePath, childDst)) {
+                    return false
+                }
+            }
+            return true
+        }
+
+        // 2. Direct POSIX copy if destination parent is writable
+        try {
+            if (dstParent?.canWrite() == true || dstFile.canWrite()) {
+                java.io.FileInputStream(srcFile).use { input ->
+                    java.io.FileOutputStream(dstFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                if (dstFile.exists() && dstFile.length() == srcFile.length()) {
+                    return true
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 3. Stream copy via ParcelFileDescriptor / Storage Broker
+        try {
+            val inStream = try {
+                java.io.FileInputStream(srcFile)
+            } catch (_: Exception) {
+                val inPfd = openRootWritablePfd(context, src, "r")
+                if (inPfd != null) ParcelFileDescriptor.AutoCloseInputStream(inPfd) else null
+            }
+
+            val outStream = try {
+                if (dstFile.canWrite() || dstParent?.canWrite() == true) {
+                    java.io.FileOutputStream(dstFile)
+                } else {
+                    val outPfd = openRootWritablePfd(context, dst, "w")
+                    if (outPfd != null) ParcelFileDescriptor.AutoCloseOutputStream(outPfd) else java.io.FileOutputStream(dstFile)
+                }
+            } catch (_: Exception) {
+                val outPfd = openRootWritablePfd(context, dst, "w")
+                if (outPfd != null) ParcelFileDescriptor.AutoCloseOutputStream(outPfd) else null
+            }
+
+            if (inStream != null && outStream != null) {
+                inStream.use { input ->
+                    outStream.use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                if (dstFile.exists() && dstFile.length() == srcFile.length()) {
+                    return true
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "copyOnSdRoot stream failed for $src -> $dst: ${e.message}")
+        }
+
+        // 4. Root execution fallback
+        try {
+            val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "cp -a '$src' '$dst'"))
+            proc.waitFor()
+            if (dstFile.exists()) return true
+        } catch (_: Exception) {}
+
         return false
     }
 
