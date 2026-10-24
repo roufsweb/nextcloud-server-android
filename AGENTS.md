@@ -28,6 +28,7 @@ Detailed domain-specific guidelines are partitioned into modular rule files with
 5. [05-codebase-navigation-and-guardrails.md](file:///e:/rouf/android-apk/nextcloud-server-android/.agents/rules/05-codebase-navigation-and-guardrails.md): Token-efficient architecture map ([CODEBASE_INDEX.md](file:///e:/rouf/android-apk/nextcloud-server-android/.agents/skills/codebase-architecture-map/CODEBASE_INDEX.md)), connection graph ([CONNECTION_GRAPH.md](file:///e:/rouf/android-apk/nextcloud-server-android/.agents/skills/codebase-architecture-map/CONNECTION_GRAPH.md)), sequential edit chains, and re-indexing protocol.
 6. [06-testing-and-clean-install.md](file:///e:/rouf/android-apk/nextcloud-server-android/.agents/rules/06-testing-and-clean-install.md): Strict fresh install protocol (`adb uninstall`), `android:allowBackup="false"`, dual-device verification matrix (Physical Galaxy S8 + Android 14 Emulator), zero skeleton bloat, and 24-feature test standard.
 7. [07-ui-ux-simplicity.md](file:///e:/rouf/android-apk/nextcloud-server-android/.agents/rules/07-ui-ux-simplicity.md): Material Design 3 simplicity, elimination of wordy AI subtitles, clean tonal cards, educational storage protection dialog, and zero blocking popups.
+8. [08-google-grade-testing-standard.md](file:///e:/rouf/android-apk/nextcloud-server-android/.agents/rules/08-google-grade-testing-standard.md): Google & Tier-1 Big Tech test sizing (70/20/10 pyramid), hermetic isolation, cold-start latency budgets (<2.5s), memory leak audits, chaos resilience, and headless browser Playwright verification.
 
 ---
 
@@ -38,11 +39,13 @@ Detailed domain-specific guidelines are partitioned into modular rule files with
 * Refresh Architecture Index & Connection Graph: `python scripts/generate_codebase_index.py`
 * Run 21-Feature Autonomous Test Suite: `python scratch/run_full_autonomous_tests.py <device_id> <port>`
 * Run Web UI, DOM & Preview Test Suite: `python scratch/test_webui_and_previews.py <device_id> <port>`
+* Run Google-Grade Enterprise Validation Suite: `python scratch/run_google_grade_validation.py <device_id> <port>`
 
 ---
 
 ## 4. Swarm Engineering Roles & Skill Mapping
 Engineering responsibilities are assigned across specialized autonomous agent roles:
+* **Google-Grade Test Architect & Verification Lead**: Enforces Google 70/20/10 test sizing, hermeticity, macrobenchmarks, chaos resilience, and multi-tier quality gates ([enterprise-testing-and-validation](file:///e:/rouf/android-apk/nextcloud-server-android/.agents/skills/enterprise-testing-and-validation/SKILL.md)).
 * **Solutions & Environment Alignment Architect**: Profiles hardware/OS limits and aligns them with true user needs.
 * **Resource & Task Orchestration Lead**: Manages capacity, decomposes initiatives, and routes tasks without waste.
 * **Codebase Knowledge Steward (SME)**: Memorizes codebase layout, component relations, and sequential edit chains.
