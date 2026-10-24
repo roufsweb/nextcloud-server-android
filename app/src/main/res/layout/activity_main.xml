@@ -546,18 +546,10 @@
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="Internal Storage"
+                                    android:text="Server Data &amp; Database"
                                     android:textColor="@color/m3_on_surface"
                                     android:textSize="15sp"
                                     android:textStyle="bold" />
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="2dp"
-                                    android:text="Internal application data storage"
-                                    android:textColor="@color/m3_on_surface_variant"
-                                    android:textSize="12sp" />
                             </LinearLayout>
 
                             <com.google.android.material.button.MaterialButton
@@ -565,9 +557,11 @@
                                 style="@style/Widget.Material3.Button.TonalButton"
                                 android:layout_width="wrap_content"
                                 android:layout_height="40dp"
-                                android:text="Change"
-                                android:textSize="12.5sp"
+                                android:text="Protected"
+                                android:textSize="12sp"
                                 android:textStyle="bold"
+                                app:icon="@drawable/ic_security"
+                                app:iconSize="16dp"
                                 app:cornerRadius="20dp" />
                         </LinearLayout>
 

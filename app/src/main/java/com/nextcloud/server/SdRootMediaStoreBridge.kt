@@ -272,7 +272,7 @@ object SdRootMediaStoreBridge {
         // write directly into the app's dedicated directory on this exact same physical storage drive:
         // /storage/<UUID>/Android/data/<package>/files/data/<subPath>
         try {
-            val appScopedBase = File("/storage/$rawUuid/Android/data/${context.packageName}/files/data")
+            val appScopedBase = File("/storage/$rawUuid/Android/data/${context.packageName}/files/Nextcloud")
             val targetFile = File(appScopedBase, subPath)
             targetFile.parentFile?.mkdirs()
             val pfdMode = when {

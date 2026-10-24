@@ -378,6 +378,7 @@ class StorageMountManager(private val context: Context) {
                     executeOcc("files:scan", "--path=/admin/files")
                 }
             }
+            nextcloudManager.purgeAllDefaultDemoFiles()
 
             // 3. Notify UI of storage changes
             val changeIntent = Intent(ACTION_STORAGE_CHANGED).apply {
@@ -385,8 +386,52 @@ class StorageMountManager(private val context: Context) {
             }
             context.sendBroadcast(changeIntent)
 
+            // 4. Export storage metrics for Nextcloud Web UI Sidebar
+            exportStorageStatsJson(currentStorages)
+
         } catch (e: Exception) {
             Log.e(TAG, "Error synchronizing storage drives", e)
+        }
+    }
+
+    /**
+     * Exports current active storage drive metrics to storage_stats.json in Nextcloud web root
+     * so that the Web UI sidebar widget can display live storage capacity above Files settings.
+     */
+    fun exportStorageStatsJson(storages: List<DetectedStorage>) {
+        try {
+            val jsonArray = JSONArray()
+            for (s in storages) {
+                if (!isStorageEnabled(s.id)) continue
+                val total = s.totalBytes
+                val free = s.freeBytes
+                val used = if (total > free) total - free else 0L
+                val totalGb = total / (1024.0 * 1024.0 * 1024.0)
+                val usedGb = used / (1024.0 * 1024.0 * 1024.0)
+                val freeGb = free / (1024.0 * 1024.0 * 1024.0)
+                val pct = if (total > 0) ((used.toDouble() / total.toDouble()) * 100).toInt().coerceIn(0, 100) else 0
+
+                val obj = org.json.JSONObject().apply {
+                    put("id", s.id)
+                    put("displayName", s.displayName)
+                    put("mountPoint", s.nextcloudMountPoint)
+                    put("path", s.path)
+                    put("usedBytes", used)
+                    put("totalBytes", total)
+                    put("freeBytes", free)
+                    put("usedFormatted", String.format(java.util.Locale.US, "%.1f GB", usedGb))
+                    put("totalFormatted", String.format(java.util.Locale.US, "%.1f GB", totalGb))
+                    put("freeFormatted", String.format(java.util.Locale.US, "%.1f GB", freeGb))
+                    put("percent", pct)
+                }
+                jsonArray.put(obj)
+            }
+
+            val targetFile = File(context.filesDir, "nextcloud/storage_stats.json")
+            targetFile.writeText(jsonArray.toString(2))
+            Log.i(TAG, "Exported storage_stats.json with ${jsonArray.length()} active storage volume(s)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to export storage_stats.json", e)
         }
     }
 
@@ -506,7 +551,6 @@ class StorageMountManager(private val context: Context) {
                     // When storage permission is granted (or drive root is accessible), mount the bare drive root (/storage/<UUID>)
                     // This gives users immediate zero-picker access to all existing media/files on the card across Android 8-17.
                     val driveRootDir = File(targetPath)
-                    val hasStoragePerm = hasExternalStoragePermission()
 
                     val safManager = SdCardSafManager(context)
                     val hasSaf = safManager.hasSafAccess(rawUuid)
@@ -534,23 +578,22 @@ class StorageMountManager(private val context: Context) {
                     val isActualWritable = !isReadOnlyFs
 
                     val (chosenDir, isFullDrive) = when {
-                        isSdCard && effectiveDriveDir.exists() && (hasSaf || isRootWritable || hasStoragePerm || effectiveDriveDir.canRead()) -> {
-                            Log.i(TAG, "Using physical root for MicroSD $displayName: ${effectiveDriveDir.absolutePath}")
+                        effectiveDriveDir.exists() && (hasSaf || isRootWritable) -> {
+                            Log.i(TAG, "Using physical root for $displayName (write verified): ${effectiveDriveDir.absolutePath}")
                             Pair(effectiveDriveDir, true)
                         }
-                        !isSdCard && (hasSaf || isRootWritable) -> {
-                            Log.i(TAG, "Using physical root for USB $displayName (write verified): ${effectiveDriveDir.absolutePath}")
-                            Pair(effectiveDriveDir, true)
-                        }
-                        !isSdCard && Build.VERSION.SDK_INT < Build.VERSION_CODES.R && effectiveDriveDir.exists() && (hasStoragePerm || effectiveDriveDir.canWrite()) -> {
-                            Log.i(TAG, "Using physical root for legacy Android USB $displayName: ${effectiveDriveDir.absolutePath}")
+                        isSdCard && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && effectiveDriveDir.exists() -> {
+                            Log.i(TAG, "Using physical root for MicroSD $displayName via MediaStore bridge: ${effectiveDriveDir.absolutePath}")
                             Pair(effectiveDriveDir, true)
                         }
                         else -> {
                             val matchingAppDir = externalDirs.firstOrNull { it != null && it.absolutePath.contains(rawUuid, ignoreCase = true) }
                             val appScopedDir = matchingAppDir?.let { File(it, "Nextcloud") }
                                 ?: File("/storage/$rawUuid/Android/data/${context.packageName}/files/Nextcloud")
-                            Log.i(TAG, "Using dedicated app-scoped storage for $displayName: ${appScopedDir.absolutePath}")
+                            if (!appScopedDir.exists()) {
+                                try { appScopedDir.mkdirs() } catch (_: Exception) {}
+                            }
+                            Log.i(TAG, "Using dedicated zero-popup physical volume storage for $displayName: ${appScopedDir.absolutePath}")
                             Pair(appScopedDir, false)
                         }
                     }
@@ -606,7 +649,6 @@ class StorageMountManager(private val context: Context) {
                             val fsType = getFilesystemType(uuid)
                             val targetPath = "/storage/$uuid"
                             val driveRootDir = File(targetPath)
-                            val hasStoragePerm = hasExternalStoragePermission()
 
                             val safManager = SdCardSafManager(context)
                             val hasSaf = safManager.hasSafAccess(uuid)
@@ -633,21 +675,20 @@ class StorageMountManager(private val context: Context) {
                             val isActualWritable = !isReadOnlyFs
 
                             val (chosenDir, isFullDrive) = when {
-                                isSdCard && effectiveDriveDir.exists() && (hasSaf || isRootWritable || hasStoragePerm || effectiveDriveDir.canRead()) -> {
-                                    Log.i(TAG, "Using physical root for MicroSD $displayName: ${effectiveDriveDir.absolutePath}")
+                                effectiveDriveDir.exists() && (hasSaf || isRootWritable) -> {
+                                    Log.i(TAG, "Using physical root for $displayName (write verified): ${effectiveDriveDir.absolutePath}")
                                     Pair(effectiveDriveDir, true)
                                 }
-                                !isSdCard && (hasSaf || isRootWritable) -> {
-                                    Log.i(TAG, "Using physical root for USB $displayName (write verified): ${effectiveDriveDir.absolutePath}")
-                                    Pair(effectiveDriveDir, true)
-                                }
-                                !isSdCard && Build.VERSION.SDK_INT < Build.VERSION_CODES.R && effectiveDriveDir.exists() && (hasStoragePerm || effectiveDriveDir.canWrite()) -> {
-                                    Log.i(TAG, "Using physical root for legacy Android USB $displayName: ${effectiveDriveDir.absolutePath}")
+                                isSdCard && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && effectiveDriveDir.exists() -> {
+                                    Log.i(TAG, "Using physical root for MicroSD $displayName via MediaStore bridge: ${effectiveDriveDir.absolutePath}")
                                     Pair(effectiveDriveDir, true)
                                 }
                                 else -> {
                                     val appDir = File(dir, "Nextcloud")
-                                    Log.i(TAG, "Using dedicated app-scoped storage for $displayName: ${appDir.absolutePath}")
+                                    if (!appDir.exists()) {
+                                        try { appDir.mkdirs() } catch (_: Exception) {}
+                                    }
+                                    Log.i(TAG, "Using dedicated zero-popup physical volume storage for $displayName: ${appDir.absolutePath}")
                                     Pair(appDir, false)
                                 }
                             }

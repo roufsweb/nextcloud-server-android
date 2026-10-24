@@ -256,6 +256,69 @@ class NextcloudManager(private val context: Context) {
         }
     }
 
+    /**
+     * Purges default Nextcloud skeleton and demo files (manual PDFs, intro MP4s, sample pictures)
+     * so that the user's root folder is 100% clean and contains only real storage volumes and user files.
+     */
+    fun purgeAllDefaultDemoFiles() {
+        try {
+            // 1. Wipe core/skeleton directory completely so new accounts are always clean
+            val skeletonDir = File(nextcloudDir, "core/skeleton")
+            if (skeletonDir.exists() && skeletonDir.isDirectory) {
+                skeletonDir.listFiles()?.forEach { it.deleteRecursively() }
+                Log.i(TAG, "Purged core/skeleton contents to prevent seeding demo files.")
+            }
+
+            // 2. Lock skeletondirectory configuration
+            executeOcc("config:system:set", "skeletondirectory", "--value=")
+
+            // 3. Purge existing accounts
+            val dataDir = File(nextcloudDir, "data")
+            if (!dataDir.exists() || !dataDir.isDirectory) return
+
+            val demoFileNames = setOf(
+                "Nextcloud Manual.pdf",
+                "Nextcloud intro.mp4",
+                "Nextcloud.png",
+                "Nextcloud flyer.pdf",
+                "Reasons to use Nextcloud.pdf",
+                "Readme.md",
+                "Templates credits.md"
+            )
+
+            var anyDeleted = false
+            dataDir.listFiles()?.filter { it.isDirectory && !it.name.startsWith("appdata_") }?.forEach { userDir ->
+                val filesFolder = File(userDir, "files")
+                if (filesFolder.exists() && filesFolder.isDirectory) {
+                    filesFolder.listFiles()?.forEach { file ->
+                        if (demoFileNames.contains(file.name)) {
+                            file.deleteRecursively()
+                            anyDeleted = true
+                            Log.i(TAG, "Purged demo file: ${file.absolutePath}")
+                        } else if (file.isDirectory && (file.name == "Photos" || file.name == "Documents" || file.name == "Templates")) {
+                            val contents = file.listFiles() ?: emptyArray()
+                            val isDemoDir = contents.all { c ->
+                                c.name in setOf("Coast.jpg", "Hummingbird.jpg", "Nut.jpg", "Readme.md", "About.txt", "Example.odt") ||
+                                c.name.endsWith(".md") || c.name.endsWith(".txt")
+                            }
+                            if (isDemoDir && contents.size <= 5) {
+                                file.deleteRecursively()
+                                anyDeleted = true
+                                Log.i(TAG, "Purged demo directory: ${file.absolutePath}")
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (anyDeleted) {
+                executeOcc("files:cleanup")
+                executeOcc("files:scan", "--all")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error purging default demo files: ${e.message}")
+        }
+    }
 
     /**
      * Ensures mobile app QR login compatibility by setting settings:qrcode_onetime to 'no'.
@@ -308,6 +371,7 @@ ${'$'}CONFIG = [
     ],
   ],
   'appstoreenabled' => true,
+  'skeletondirectory' => '',
   'allow_local_remote_servers' => true,
   'check_data_directory_permissions' => false,
   'tempdirectory' => dirname(__DIR__, 2) . '/tmp',
@@ -379,8 +443,48 @@ ${'$'}CONFIG = [
             Log.i(TAG, "Ensured apps.config.php and custom_apps directory")
 
             ensureThemingAndAppstorePatches()
+            purgeDefaultDemoFiles()
         } catch (e: Exception) {
             Log.e(TAG, "Error ensuring apps config", e)
+        }
+    }
+
+    /**
+     * Purges default demo files and folders (e.g. Nextcloud intro.mp4, Nextcloud Manual.pdf,
+     * Readme.md, Reasons to use Nextcloud.pdf, Templates/, Documents/, etc.) from user storage
+     * so that the file list starts completely clean.
+     */
+    fun purgeDefaultDemoFiles() {
+        try {
+            val dataDir = File(nextcloudDir, "data")
+            if (!dataDir.exists()) return
+            val userDirs = dataDir.listFiles()?.filter { it.isDirectory && !it.name.startsWith("appdata_") && it.name != "tmp" } ?: emptyList()
+            var modified = false
+            for (userDir in userDirs) {
+                val filesDir = File(userDir, "files")
+                if (!filesDir.exists()) continue
+                val demoNames = setOf(
+                    "Nextcloud intro.mp4",
+                    "Nextcloud Manual.pdf",
+                    "Nextcloud.png",
+                    "Reasons to use Nextcloud.pdf",
+                    "Readme.md",
+                    "Templates",
+                    "Documents"
+                )
+                filesDir.listFiles()?.forEach { file ->
+                    if (demoNames.contains(file.name)) {
+                        file.deleteRecursively()
+                        Log.i(TAG, "Purged default demo file/folder: ${file.absolutePath}")
+                        modified = true
+                    }
+                }
+            }
+            if (modified) {
+                executeOcc("files:scan", "--all")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Non-fatal error purging default demo files: ${e.message}")
         }
     }
 
@@ -1175,6 +1279,220 @@ ${'$'}CONFIG = [
                         .replace("PASSWORD_ARGON2I => 2,", "'argon2i' => 2,")
                     hasher.writeText(patched)
                     Log.i(TAG, "Patched Hasher.php: resolved undefined PASSWORD_ARGON2ID for bcrypt-only PHP runtime.")
+                }
+            }
+
+            // 4. Install Nextcloud Web UI Storage Sidebar Widget
+            val sidebarJs = File(nextcloudDir, "storage_sidebar.js")
+            val jsScript = """
+(function() {
+    function findSidebarTarget() {
+        // Nextcloud 28-35 Vue 3 files navigation settings footer
+        const settingsUl = document.querySelector('ul.app-navigation-entry__settings');
+        if (settingsUl && settingsUl.parentNode) {
+            return { parent: settingsUl.parentNode, before: settingsUl };
+        }
+        // Quota navigation entry
+        const quotaItem = document.querySelector('.app-navigation-entry__settings-quota, [data-cy-files-navigation-settings-quota]');
+        if (quotaItem && quotaItem.parentNode) {
+            return { parent: quotaItem.parentNode, before: quotaItem };
+        }
+        // Settings button entry
+        const settingsBtn = document.querySelector('[data-cy-files-navigation-settings-button]');
+        if (settingsBtn && settingsBtn.parentNode) {
+            return { parent: settingsBtn.parentNode, before: settingsBtn };
+        }
+        // Legacy Nextcloud app-settings container
+        const appSettings = document.getElementById('app-settings');
+        if (appSettings && appSettings.parentNode) {
+            return { parent: appSettings.parentNode, before: appSettings };
+        }
+        // General app navigation container
+        const navContent = document.querySelector('.app-navigation__content, #app-navigation, nav.app-navigation');
+        if (navContent) {
+            return { parent: navContent, before: null };
+        }
+        return null;
+    }
+
+    function injectStorageWidget() {
+        if (document.getElementById('nc-storage-sidebar-container')) return true;
+
+        const target = findSidebarTarget();
+        if (!target) return false;
+
+        const container = document.createElement('div');
+        container.id = 'nc-storage-sidebar-container';
+        container.style.padding = '10px 14px 8px 14px';
+        container.style.borderTop = '1px solid var(--color-border, #e0e0e0)';
+        container.style.fontSize = '12px';
+        container.style.color = 'var(--color-text-maxcontrast, #666)';
+        container.style.width = '100%';
+        container.style.boxSizing = 'border-box';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.marginBottom = '8px';
+        header.style.fontWeight = '600';
+        header.style.letterSpacing = '0.5px';
+        header.style.textTransform = 'uppercase';
+        header.style.fontSize = '10.5px';
+        header.style.color = 'var(--color-text-maxcontrast, #888)';
+        header.innerHTML = '<span>Storage Volumes</span><span id="nc-storage-refresh" style="cursor:pointer; font-size:12px; padding: 2px;" title="Refresh storage stats">🔄</span>';
+        container.appendChild(header);
+
+        const list = document.createElement('div');
+        list.id = 'nc-storage-drives-list';
+        list.innerHTML = '<div style="opacity:0.6; padding: 4px 0;">Loading storages...</div>';
+        container.appendChild(list);
+
+        if (target.before) {
+            target.parent.insertBefore(container, target.before);
+        } else {
+            target.parent.appendChild(container);
+        }
+
+        const refreshBtn = header.querySelector('#nc-storage-refresh');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                refreshBtn.style.transform = 'rotate(180deg)';
+                refreshBtn.style.transition = 'transform 0.3s ease';
+                setTimeout(() => { refreshBtn.style.transform = 'none'; }, 300);
+                loadStorageStats();
+            });
+        }
+
+        loadStorageStats();
+        return true;
+    }
+
+    function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return '0 GB';
+        const gb = bytes / (1024 * 1024 * 1024);
+        return gb.toFixed(1) + ' GB';
+    }
+
+    function loadStorageStats() {
+        const list = document.getElementById('nc-storage-drives-list');
+        if (!list) return;
+
+        fetch('/storage_stats.json?t=' + Date.now())
+            .then(function(res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            })
+            .then(function(drives) {
+                if (!Array.isArray(drives) || drives.length === 0) {
+                    list.innerHTML = '<div style="opacity:0.6; padding: 4px 0;">No active drives</div>';
+                    return;
+                }
+                list.innerHTML = '';
+                drives.forEach(function(drive) {
+                    const driveRow = document.createElement('a');
+                    const mountParam = encodeURIComponent(drive.mountPoint || drive.displayName);
+                    driveRow.href = '/index.php/apps/files/?dir=/' + mountParam;
+                    driveRow.style.display = 'block';
+                    driveRow.style.textDecoration = 'none';
+                    driveRow.style.color = 'inherit';
+                    driveRow.style.padding = '6px 8px';
+                    driveRow.style.borderRadius = '8px';
+                    driveRow.style.marginBottom = '6px';
+                    driveRow.style.transition = 'background-color 0.15s ease';
+                    driveRow.style.backgroundColor = 'var(--color-background-hover, rgba(0,0,0,0.02))';
+                    driveRow.onmouseenter = function() { driveRow.style.backgroundColor = 'var(--color-background-darker, rgba(0,0,0,0.06))'; };
+                    driveRow.onmouseleave = function() { driveRow.style.backgroundColor = 'var(--color-background-hover, rgba(0,0,0,0.02))'; };
+
+                    const used = drive.usedFormatted || formatBytes(drive.usedBytes);
+                    const total = drive.totalFormatted || formatBytes(drive.totalBytes);
+                    const free = drive.freeFormatted || formatBytes(drive.freeBytes);
+                    const pct = Math.min(100, Math.max(0, drive.percent || 0));
+
+                    const icon = (drive.id === 'primary_internal' || drive.displayName.toLowerCase().indexOf('phone') !== -1) 
+                        ? '📱' 
+                        : (drive.displayName.toLowerCase().indexOf('sd') !== -1 ? '💾' : '🔌');
+
+                    const barColor = pct >= 90 ? '#e9322d' : (pct >= 80 ? '#e09b00' : 'var(--color-primary, #0082c9)');
+
+                    driveRow.innerHTML = 
+                        '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">' +
+                            '<span style="font-weight: 600; color: var(--color-main-text, #222); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 125px;">' +
+                                icon + ' ' + drive.displayName +
+                            '</span>' +
+                            '<span style="font-size: 11px; opacity: 0.9; font-weight: 600; color: var(--color-primary, #0082c9);">' +
+                                free + ' free' +
+                            '</span>' +
+                        '</div>' +
+                        '<div style="height: 6px; width: 100%; background: var(--color-border, #e4e4e4); border-radius: 3px; overflow: hidden; margin-bottom: 2px;">' +
+                            '<div style="height: 100%; width: ' + pct + '%; background: ' + barColor + '; border-radius: 3px; transition: width 0.3s ease;"></div>' +
+                        '</div>' +
+                        '<div style="font-size: 10px; opacity: 0.7; display: flex; justify-content: space-between;">' +
+                            '<span>' + used + ' of ' + total + '</span>' +
+                            '<span>' + pct + '%</span>' +
+                        '</div>';
+                    list.appendChild(driveRow);
+                });
+            })
+            .catch(function(err) {
+                console.warn('[StorageSidebar] Could not load storage_stats.json:', err);
+                list.innerHTML = '<div style="opacity:0.6; padding: 4px 0;">Storage stats unavailable</div>';
+            });
+    }
+
+    let attempts = 0;
+    const interval = setInterval(function() {
+        attempts++;
+        if (injectStorageWidget() || attempts > 30) {
+            clearInterval(interval);
+        }
+    }, 400);
+
+    const observer = new MutationObserver(function() {
+        if (!document.getElementById('nc-storage-sidebar-container')) {
+            injectStorageWidget();
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Periodically refresh stats every 30 seconds
+    setInterval(function() {
+        if (document.getElementById('nc-storage-sidebar-container')) {
+            loadStorageStats();
+        }
+    }, 30000);
+})();
+""".trimIndent()
+            sidebarJs.writeText(jsScript)
+
+            val layoutUser = File(nextcloudDir, "core/templates/layout.user.php")
+            if (layoutUser.exists()) {
+                val layoutContent = layoutUser.readText()
+                if (!layoutContent.contains("storage_sidebar.js")) {
+                    val scriptTag = """<script nonce="<?php p(${'$'}_['cspNonce']); ?>" src="/storage_sidebar.js" defer></script>"""
+                    val patchedLayout = layoutContent.replace("</body>", "    $scriptTag\n</body>")
+                    layoutUser.writeText(patchedLayout)
+                    Log.i(TAG, "Patched layout.user.php: registered storage_sidebar.js with CSP nonce.")
+                }
+            }
+
+            val cronServiceFile = File(nextcloudDir, "core/Service/CronService.php")
+            if (cronServiceFile.exists()) {
+                val content = cronServiceFile.readText()
+                if (content.contains("if (\$user !== \$configUser) {")) {
+                    cronServiceFile.writeText(content.replace("if (\$user !== \$configUser) {", "if (\$user !== \$configUser && \$user !== 0) {"))
+                    Log.i(TAG, "Patched CronService.php: allowed root CLI execution.")
+                }
+            }
+
+            val consoleFile = File(nextcloudDir, "console.php")
+            if (consoleFile.exists()) {
+                val content = consoleFile.readText()
+                if (content.contains("if (\$user !== \$configUser) {")) {
+                    consoleFile.writeText(content.replace("if (\$user !== \$configUser) {", "if (\$user !== \$configUser && \$user !== 0) {"))
+                    Log.i(TAG, "Patched console.php: allowed root CLI execution.")
                 }
             }
         } catch (e: Exception) {

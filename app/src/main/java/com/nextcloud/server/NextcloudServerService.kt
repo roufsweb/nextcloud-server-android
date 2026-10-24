@@ -37,6 +37,7 @@ class NextcloudServerService : Service() {
         const val ACTION_SAF_GRANTED = "com.nextcloud.server.SAF_GRANTED"
         const val ACTION_SETUP_PROGRESS = "com.nextcloud.server.SETUP_PROGRESS"
         @Volatile var isServerRunning = false
+        @Volatile var currentRunningPort = 0
         @Volatile var lastStatus = "Stopped"
         @Volatile var isMigrationRunning = false
         @Volatile var lastMigrationStage = ""
@@ -111,15 +112,23 @@ class NextcloudServerService : Service() {
             }
         }
 
-        if (isServerRunning) {
-            Log.i("NextcloudServer", "Server is already running, skipping redundant startup.")
-            ensureForeground(lastStatus)
-            updateStatus(lastStatus)
-            return START_STICKY
-        }
-
         val savedPort = AppPreferences(this).serverPort
         val port = intent?.getIntExtra("port", savedPort) ?: savedPort
+
+        if (isServerRunning) {
+            if (currentRunningPort == 0 || currentRunningPort == port) {
+                Log.i("NextcloudServer", "Server is already running on port $port, skipping redundant startup.")
+                ensureForeground(lastStatus)
+                updateStatus(lastStatus)
+                return START_STICKY
+            } else {
+                Log.i("NextcloudServer", "Server is running on $currentRunningPort, requested $port. Triggering port change...")
+                executor.execute {
+                    performPortChange(port)
+                }
+                return START_STICKY
+            }
+        }
 
         ensureForeground("Starting server...")
         
@@ -154,6 +163,8 @@ class NextcloudServerService : Service() {
                     updateSetupNotification("Starting Nginx web server", 98)
                 }
                 startNginx()
+                currentRunningPort = port
+                isServerRunning = true
 
                 // Initialize SAF & upload relay service
                 safManager = SdCardSafManager(this@NextcloudServerService)
@@ -184,6 +195,11 @@ class NextcloudServerService : Service() {
                     broadcastSetupProgress(false, "Server is ready!", 100, true)
                 }
                 updateStatus("Nextcloud is running at $ipDisplay")
+
+                // Run post-boot OCC maintenance and demo purges asynchronously in background
+                Thread({
+                    performPostBootMaintenance(ncManager)
+                }, "NC-PostBootMaintenance").start()
             } catch (t: Throwable) {
                 Log.e("NextcloudServer", "Error starting server", t)
                 val errMsg = t.localizedMessage ?: t.message ?: t.javaClass.simpleName
@@ -199,6 +215,33 @@ class NextcloudServerService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private fun performPostBootMaintenance(ncManager: NextcloudManager) {
+        try {
+            ncManager.getWifiIpAddress()?.let { ip ->
+                ncManager.addTrustedDomain(ip)
+            }
+            ncManager.ensureAppStoreAndAppsConfig()
+            val prefs = AppPreferences(this).sharedPreferences
+            val isConfigured = prefs.getBoolean("core_apps_and_previews_configured", false)
+            if (!isConfigured) {
+                ncManager.ensureCoreAppsEnabled()
+                ncManager.configurePreviewSettings()
+                prefs.edit().putBoolean("core_apps_and_previews_configured", true).apply()
+            }
+            try {
+                val tmpDir = File(filesDir, "tmp")
+                ncManager.executeOcc("config:system:set", "check_data_directory_permissions", "--value=false", "--type=boolean")
+                ncManager.executeOcc("config:system:set", "tempdirectory", "--value=" + tmpDir.absolutePath)
+                ncManager.clearStaleFileLocks()
+                ncManager.purgeAllDefaultDemoFiles()
+            } catch (e: Exception) {
+                Log.w("NextcloudServer", "Error setting tempdirectory or clearing locks: ${e.message}")
+            }
+        } catch (e: Exception) {
+            Log.w("NextcloudServer", "Error during post-boot maintenance: ${e.message}")
+        }
     }
 
     private fun prepareBinaries(port: Int) {
@@ -261,21 +304,8 @@ class NextcloudServerService : Service() {
                 throw IOException("Nextcloud initial configuration failed")
             }
         } else {
-            // Ensure current Wi-Fi LAN IP is in trusted domains
-            nextcloudManager.getWifiIpAddress()?.let { ip ->
-                nextcloudManager.addTrustedDomain(ip)
-            }
-            nextcloudManager.ensureAppStoreAndAppsConfig()
-            nextcloudManager.ensureCoreAppsEnabled()
-            nextcloudManager.configurePreviewSettings()
-            try {
-                nextcloudManager.executeOcc("config:system:set", "check_data_directory_permissions", "--value=false", "--type=boolean")
-                nextcloudManager.executeOcc("config:system:set", "tempdirectory", "--value=" + tmpDir.absolutePath)
-                // Clean up any stale/orphaned locks in SQLite from interrupted uploads
-                nextcloudManager.clearStaleFileLocks()
-            } catch (e: Exception) {
-                Log.w("NextcloudServer", "Error setting tempdirectory or clearing locks: ${e.message}")
-            }
+            // Server is already installed; configurations and binaries are ready.
+            // Post-boot OCC optimizations and demo skeleton purges execute asynchronously after server is up.
         }
     }
 
@@ -367,6 +397,7 @@ class NextcloudServerService : Service() {
         phpProcess = null
         nginxProcess = null
         isServerRunning = false
+        currentRunningPort = 0
         AppPreferences(this).isServerRunning = false
         lastStatus = "Stopped"
         val intent = Intent("com.nextcloud.server.STATUS_UPDATE").apply {
@@ -621,6 +652,8 @@ class NextcloudServerService : Service() {
             broadcastPortProgress(true, lastPortChangeStatus, 85, newPort, false)
 
             startNginx()
+            currentRunningPort = newPort
+            isServerRunning = true
             Thread.sleep(600)
 
             // Update SharedPreferences with the newly applied port

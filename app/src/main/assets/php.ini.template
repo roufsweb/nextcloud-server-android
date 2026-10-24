@@ -11,7 +11,21 @@ upload_tmp_dir="{{FILES_DIR}}/tmp"
 session.save_path="{{FILES_DIR}}/tmp"
 
 extension_dir="{{NATIVE_LIB_DIR}}"
-extension=gd.so
+extension=libphp_gd.so
+
+; Security and Vulnerability Hardening (PHP2Shell CVE-2026-109618 and CVE-2026-109619)
+session.upload_progress.enabled=0
+expose_php=Off
+display_errors=Off
+display_startup_errors=Off
+log_errors=On
+error_log="{{FILES_DIR}}/run/php_error.log"
+allow_url_include=Off
+
+; Session Security
+session.cookie_httponly=1
+session.use_strict_mode=1
+session.cookie_samesite="Lax"
 
 [curl]
 curl.cainfo="{{FILES_DIR}}/conf/cacert.pem"

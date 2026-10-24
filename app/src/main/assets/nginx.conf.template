@@ -93,6 +93,12 @@ http {
             return 404;
         }
 
+        location = /storage_stats.json {
+            access_log off;
+            default_type application/json;
+            add_header Cache-Control "no-cache, no-store, must-revalidate";
+        }
+
         # Pass PHP requests to PHP-FPM
         location ~ \.php(?:$|/) {
             rewrite ^/(?!index|remote|public|cron|status|ocs\/v[12]|ocs-provider\/.+|core\/ajax\/update|updater\/.+|.+\/richdocumentscode(_arm64)?\/proxy) /index.php$request_uri;
@@ -114,6 +120,7 @@ http {
             fastcgi_param HTTP_CF_CONNECTING_IP $http_cf_connecting_ip if_not_empty;
             fastcgi_param modHeadersAvailable true;
             fastcgi_param front_controller_active true;
+            fastcgi_param HTTP_PROXY "";
             fastcgi_pass 127.0.0.1:9000;
             fastcgi_intercept_errors on;
             fastcgi_request_buffering off;

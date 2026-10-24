@@ -530,7 +530,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateCredentialsButton.setOnClickListener { updateAdminCredentials() }
-        changeDataDirButton.setOnClickListener { showStorageSelectionDialog() }
+        changeDataDirButton.setOnClickListener { showStorageProtectionDialog() }
         addDomainButton.setOnClickListener { showAddDomainDialog() }
         trustedDomainsListText.setOnClickListener { showManageDomainsDialog() }
         viewLogsButton.setOnClickListener { showLogsDialog() }
@@ -1219,18 +1219,13 @@ class MainActivity : AppCompatActivity() {
                         val labelSuffix = if (storage.label.isNotBlank()) " [${storage.label}]" else ""
                         titleView.text = "${storage.displayName}$labelSuffix"
 
-                        val statusHint = when {
-                            storage.isReadOnlyFs -> "⚠️ Hardware Read-Only (${storage.fsType}) • Needs exFAT/FAT32 format"
-                            else -> "Full Read & Write Access • ${storage.fsType}"
+                        if (storage.isReadOnlyFs) {
+                            subtitleView.text = "⚠️ Hardware Read-Only (${storage.fsType}) • Needs exFAT/FAT32 format"
+                            subtitleView.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_danger))
+                            subtitleView.visibility = View.VISIBLE
+                        } else {
+                            subtitleView.visibility = View.GONE
                         }
-                        subtitleView.text = statusHint
-                        subtitleView.setTextColor(
-                            ContextCompat.getColor(
-                                this@MainActivity,
-                                if (storage.isReadOnlyFs) R.color.m3_danger
-                                else R.color.m3_on_surface_variant
-                            )
-                        )
 
                         pathView.text = storage.displayPath
 
@@ -1418,6 +1413,21 @@ class MainActivity : AppCompatActivity() {
             adminUserInput.isEnabled = true
             adminPassInput.isEnabled = true
         }
+    }
+
+    private fun showStorageProtectionDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setIcon(R.drawable.ic_security)
+            .setTitle("Server Data & Database Protected")
+            .setMessage(
+                "Nextcloud's core SQLite database and server configurations are safely isolated in private application storage to prevent corruption.\n\n" +
+                "You do not need to move this directory to use external storage — Phone Storage, SD Cards, and USB drives are automatically mounted as folders directly in Nextcloud."
+            )
+            .setPositiveButton("OK", null)
+            .setNeutralButton("Advanced: Migrate") { _, _ ->
+                showStorageSelectionDialog()
+            }
+            .show()
     }
 
     private fun showStorageSelectionDialog() {
