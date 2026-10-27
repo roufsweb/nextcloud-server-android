@@ -72,6 +72,13 @@ class NextcloudServerService : Service() {
             if (uuid != null) {
                 uploadRelayService?.startWatching(listOf(uuid))
                 Log.i("NextcloudServer", "SAF permission granted for $uuid; UploadRelayService watching started")
+                executor.execute {
+                    try {
+                        storageMountManager?.syncConnectedStorages()
+                    } catch (e: Exception) {
+                        Log.w("NextcloudServer", "Error syncing storages after SAF grant: ${e.message}")
+                    }
+                }
             }
             return START_STICKY
         }
@@ -222,12 +229,13 @@ class NextcloudServerService : Service() {
             ncManager.getWifiIpAddress()?.let { ip ->
                 ncManager.addTrustedDomain(ip)
             }
+            ncManager.ensurePatches()
             ncManager.ensureAppStoreAndAppsConfig()
+            ncManager.configurePreviewSettings()
             val prefs = AppPreferences(this).sharedPreferences
             val isConfigured = prefs.getBoolean("core_apps_and_previews_configured", false)
             if (!isConfigured) {
                 ncManager.ensureCoreAppsEnabled()
-                ncManager.configurePreviewSettings()
                 prefs.edit().putBoolean("core_apps_and_previews_configured", true).apply()
             }
             try {

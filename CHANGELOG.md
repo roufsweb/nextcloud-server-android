@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-10-27
+
+### Added
+- **Physical MicroSD Card Full Root Access (Android 8–10+)**:
+  - Transparent socket-mediated SAF bridge in `SdRootMediaStoreBridge.kt` and `Local.php` granting full root read/write access to removable MicroSD cards and USB OTG storage.
+  - Native creation of folders (MKCOL), file uploads (PUT), renames, and deletions directly on physical SD card root without requiring root/SU.
+- **Embedded ARM64 FFmpeg Media Engine (`libffmpeg.so`)**:
+  - Bundled native 64-bit ARM FFmpeg binary in APK `jniLibs/arm64-v8a/libffmpeg.so`.
+  - Native HEIC photo decoding directly into GD Image runtime via isolated `LD_LIBRARY_PATH=/system/lib64` child processes, avoiding Android dynamic linker namespace collisions with `libhwui.so`.
+  - Rapid keyframe preview extraction for MOV, MP4, and drone video files.
+- **Modern Vector SVG Icons & Cache Invalidation for Web UI**:
+  - Replaced all emojis (`📱`, `💾`, `🔌`, `🔄`) with crisp, scalable SVG vector outlines (smartphone, microSD, USB flash drive, sync refresh) in the bottom-left storage widget.
+  - Added `Cache-Control: no-cache, no-store, must-revalidate` in Nginx and dynamic `filemtime` versioning (`?v=<timestamp>`) in `layout.user.php` preventing stale browser caching.
+
+### Fixed
+- **Cross-Storage Move & Copy Normalization**:
+  - Normalized path resolution in `Local.php` (`rtrim($this->datadir, '/') . '/' . ltrim($path, '/')`) preventing `//storage/` double slash which previously caused WebDAV `403 Forbidden: Copy did not proceed`.
+- **External Mount Point Error Dialog**:
+  - Enforced `status: 0` (`STATUS_SUCCESS`) on external storage configuration responses in `ApiController.php`, eliminating the "External mount error" modal dialog on `/apps/files/extstoragemounts`.
+
+---
+
 ## [1.3.0] - 2026-10-24
 
 ### Added

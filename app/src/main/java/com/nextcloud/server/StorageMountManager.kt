@@ -573,17 +573,13 @@ class StorageMountManager(private val context: Context) {
                         } catch (_: Exception) {}
                     }
 
-                    val isRootWritable = isDirectoryWritable(effectiveDriveDir)
                     val isReadOnlyFs = state == Environment.MEDIA_MOUNTED_READ_ONLY || fsType.contains("NTFS", ignoreCase = true)
-                    val isActualWritable = !isReadOnlyFs
+                    val canPosixWrite = try { effectiveDriveDir.canWrite() } catch (_: Exception) { false }
+                    val isActualWritable = !isReadOnlyFs && (canPosixWrite || hasSaf)
 
                     val (chosenDir, isFullDrive) = when {
-                        effectiveDriveDir.exists() && (hasSaf || isRootWritable) -> {
-                            Log.i(TAG, "Using physical root for $displayName (write verified): ${effectiveDriveDir.absolutePath}")
-                            Pair(effectiveDriveDir, true)
-                        }
-                        isSdCard && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && effectiveDriveDir.exists() -> {
-                            Log.i(TAG, "Using physical root for MicroSD $displayName via MediaStore bridge: ${effectiveDriveDir.absolutePath}")
+                        effectiveDriveDir.exists() -> {
+                            Log.i(TAG, "Using physical root for $displayName: ${effectiveDriveDir.absolutePath}")
                             Pair(effectiveDriveDir, true)
                         }
                         else -> {
@@ -617,7 +613,7 @@ class StorageMountManager(private val context: Context) {
                                 fsType = fsType,
                                 totalBytes = total,
                                 freeBytes = free,
-                                hasSafAccess = !isReadOnlyFs,
+                                hasSafAccess = hasSaf,
                                 isReadOnlyFs = isReadOnlyFs,
                                 isSdCard = isSdCard
                             )
@@ -670,17 +666,11 @@ class StorageMountManager(private val context: Context) {
                                 } catch (_: Exception) {}
                             }
 
-                            val isRootWritable = isDirectoryWritable(effectiveDriveDir)
                             val isReadOnlyFs = fsType.contains("NTFS", ignoreCase = true)
-                            val isActualWritable = !isReadOnlyFs
 
                             val (chosenDir, isFullDrive) = when {
-                                effectiveDriveDir.exists() && (hasSaf || isRootWritable) -> {
-                                    Log.i(TAG, "Using physical root for $displayName (write verified): ${effectiveDriveDir.absolutePath}")
-                                    Pair(effectiveDriveDir, true)
-                                }
-                                isSdCard && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && effectiveDriveDir.exists() -> {
-                                    Log.i(TAG, "Using physical root for MicroSD $displayName via MediaStore bridge: ${effectiveDriveDir.absolutePath}")
+                                effectiveDriveDir.exists() -> {
+                                    Log.i(TAG, "Using physical root for $displayName: ${effectiveDriveDir.absolutePath}")
                                     Pair(effectiveDriveDir, true)
                                 }
                                 else -> {
@@ -697,6 +687,10 @@ class StorageMountManager(private val context: Context) {
                             val total = if (driveRootDir.totalSpace > 0) driveRootDir.totalSpace else chosenDir.totalSpace
                             val free = if (driveRootDir.freeSpace > 0) driveRootDir.freeSpace else chosenDir.freeSpace
 
+                            val hasSaf2 = safManager.hasSafAccess(uuid)
+                            val canPosixWrite2 = try { driveRootDir.canWrite() } catch (_: Exception) { false }
+                            val isActualWritable2 = !isReadOnlyFs && (canPosixWrite2 || hasSaf2)
+
                             if (driveRootDir.exists()) {
                                 result.add(
                                     DetectedStorage(
@@ -707,11 +701,11 @@ class StorageMountManager(private val context: Context) {
                                         path = chosenDir.absolutePath,
                                         displayPath = chosenDir.absolutePath,
                                         isFullDrive = isFullDrive,
-                                        isWritable = isActualWritable,
+                                        isWritable = isActualWritable2,
                                         fsType = fsType,
                                         totalBytes = total,
                                         freeBytes = free,
-                                        hasSafAccess = !isReadOnlyFs,
+                                        hasSafAccess = hasSaf2,
                                         isReadOnlyFs = isReadOnlyFs,
                                         isSdCard = isSdCard
                                     )
@@ -912,8 +906,14 @@ class StorageMountManager(private val context: Context) {
         val cleanPoint = mountPoint.trimStart('/')
         Log.i(TAG, "Triggering Nextcloud file scan for mount point: $cleanPoint")
         val adminUser = AppPreferences(context).adminUser
-        val out = executeOcc("files:scan", "--path=/$adminUser/files/$cleanPoint")
-        Log.d(TAG, "files:scan output: $out")
+        scheduledExecutor.execute {
+            try {
+                val out = executeOcc("files:scan", "--shallow", "--path=/$adminUser/files/$cleanPoint")
+                Log.d(TAG, "files:scan output: $out")
+            } catch (e: Exception) {
+                Log.w(TAG, "Background scan for $cleanPoint failed: ${e.message}")
+            }
+        }
     }
 
     private fun executeOcc(vararg args: String): String {

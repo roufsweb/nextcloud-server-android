@@ -99,6 +99,12 @@ http {
             add_header Cache-Control "no-cache, no-store, must-revalidate";
         }
 
+        location = /storage_sidebar.js {
+            access_log off;
+            default_type text/javascript;
+            add_header Cache-Control "no-cache, no-store, must-revalidate";
+        }
+
         # Pass PHP requests to PHP-FPM
         location ~ \.php(?:$|/) {
             rewrite ^/(?!index|remote|public|cron|status|ocs\/v[12]|ocs-provider\/.+|core\/ajax\/update|updater\/.+|.+\/richdocumentscode(_arm64)?\/proxy) /index.php$request_uri;

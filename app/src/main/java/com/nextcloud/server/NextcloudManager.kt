@@ -204,13 +204,13 @@ class NextcloudManager(private val context: Context) {
             executeOcc("config:system:set", "preview_max_x", "--value=2048", "--type=integer")
             executeOcc("config:system:set", "preview_max_y", "--value=2048", "--type=integer")
             executeOcc("config:system:set", "preview_max_memory", "--value=256", "--type=integer")
-            executeOcc("config:system:set", "preview_max_filesize_image", "--value=50", "--type=integer")
+            executeOcc("config:system:set", "preview_max_filesize_image", "--value=-1", "--type=integer")
             executeOcc("config:system:set", "preview_concurrency_all", "--value=8", "--type=integer")
             executeOcc("config:system:set", "preview_concurrency_new", "--value=4", "--type=integer")
 
-            val ffmpegBin = File(filesDir, "bin/ffmpeg")
-            if (ffmpegBin.exists()) {
-                executeOcc("config:system:set", "preview_ffmpeg_path", "--value=${ffmpegBin.absolutePath}")
+            val ffmpegBin = BinaryHelper.getFfmpegBinary(context)
+            if (File(ffmpegBin).exists()) {
+                executeOcc("config:system:set", "preview_ffmpeg_path", "--value=$ffmpegBin")
             }
 
             val providers = listOf(
@@ -385,7 +385,8 @@ ${'$'}CONFIG = [
   'preview_max_x' => 2048,
   'preview_max_y' => 2048,
   'preview_max_scale_factor' => 1,
-  'preview_ffmpeg_path' => dirname(__DIR__, 2) . '/bin/ffmpeg',
+  'preview_max_filesize_image' => -1,
+  'preview_ffmpeg_path' => '${BinaryHelper.getFfmpegBinary(context)}',
   'enabledPreviewProviders' => [
     'OC\\Preview\\PNG',
     'OC\\Preview\\JPEG',
@@ -1238,7 +1239,7 @@ ${'$'}CONFIG = [
         }
     }
 
-    private fun ensurePatches() {
+    fun ensurePatches() {
         try {
             val ocUtil = File(nextcloudDir, "lib/private/legacy/OC_Util.php")
             if (ocUtil.exists()) {
@@ -1279,6 +1280,178 @@ ${'$'}CONFIG = [
                         .replace("PASSWORD_ARGON2I => 2,", "'argon2i' => 2,")
                     hasher.writeText(patched)
                     Log.i(TAG, "Patched Hasher.php: resolved undefined PASSWORD_ARGON2ID for bcrypt-only PHP runtime.")
+                }
+            }
+
+            // 3. Patch Movie.php for native libffmpeg.so, ffprobe fallback, LD_LIBRARY_PATH=/system/lib64 and direct local path
+            val moviePhp = File(nextcloudDir, "lib/private/Preview/Movie.php")
+            if (moviePhp.exists()) {
+                var movieContent = moviePhp.readText()
+                var movieModified = false
+                if (movieContent.contains("\$binaryType === 'ffmpeg'") && !movieContent.contains("\$binaryType === 'libffmpeg.so'")) {
+                    movieContent = movieContent.replace(
+                        "\$binaryType === 'ffmpeg'",
+                        "\$binaryType === 'ffmpeg' || \$binaryType === 'libffmpeg.so'"
+                    )
+                    movieModified = true
+                }
+                val oldHdrNeedle = "\$ffprobe_binary = \$this->config->getSystemValue('preview_ffprobe_path', null) ?? (pathinfo(\$this->binary, PATHINFO_DIRNAME) . '/ffprobe');"
+                val newHdrNeedle = """${'$'}ffprobe_binary = ${'$'}this->config->getSystemValue('preview_ffprobe_path', null) ?? (pathinfo(${'$'}this->binary, PATHINFO_DIRNAME) . '/ffprobe');
+		if (!file_exists(${'$'}ffprobe_binary) && !file_exists(${'$'}ffprobe_binary . '.so')) {
+			return false;
+		}"""
+                if (movieContent.contains(oldHdrNeedle) && !movieContent.contains("!file_exists(\$ffprobe_binary)")) {
+                    movieContent = movieContent.replace(oldHdrNeedle, newHdrNeedle)
+                    movieModified = true
+                }
+                val oldMovieProc = "\$proc = proc_open(\$cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], \$pipes);"
+                val newMovieProc = """${'$'}env = ['LD_LIBRARY_PATH' => '/system/lib64', 'PATH' => getenv('PATH') ?: '/system/bin'];
+		${'$'}proc = proc_open(${'$'}cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], ${'$'}pipes, null, ${'$'}env);"""
+                if (movieContent.contains(oldMovieProc)) {
+                    movieContent = movieContent.replace(oldMovieProc, newMovieProc)
+                    movieModified = true
+                }
+                val oldSparseNeedle = "foreach (\$sizeAttempts as \$size) {\n\t\t\t\t\$absPath = false;\n\t\t\t\t// File is remote, generate a sparse file\n\t\t\t\tif (!\$file->getStorage()->isLocal()) {"
+                val newSparseNeedle = """foreach (${'$'}sizeAttempts as ${'$'}size) {
+				${'$'}absPath = false;
+				if (${'$'}file->getStorage()->isLocal() && method_exists(${'$'}file->getStorage(), 'getLocalFile')) {
+					${'$'}directPath = ${'$'}file->getStorage()->getLocalFile(${'$'}file->getInternalPath());
+					if (is_string(${'$'}directPath) && file_exists(${'$'}directPath)) {
+						${'$'}absPath = ${'$'}directPath;
+					}
+				}
+				// File is remote, generate a sparse file
+				if (${'$'}absPath === false && !${'$'}file->getStorage()->isLocal()) {"""
+                if (movieContent.contains(oldSparseNeedle)) {
+                    movieContent = movieContent.replace(oldSparseNeedle, newSparseNeedle)
+                    movieModified = true
+                }
+                if (movieModified) {
+                    moviePhp.writeText(movieContent)
+                    Log.i(TAG, "Patched Movie.php: enabled libffmpeg.so, system linker isolation and fast local seeks.")
+                }
+            }
+
+            // 3b. Patch HEIC.php for standalone FFmpeg HEIC decoding
+            val heicPhp = File(nextcloudDir, "lib/private/Preview/HEIC.php")
+            if (heicPhp.exists()) {
+                var heicContent = heicPhp.readText()
+                var heicModified = false
+                val oldHeicAvail = "public function isAvailable(FileInfo \$file): bool {\n\t\treturn in_array('HEIC', \\Imagick::queryFormats('HEI*'), true);\n\t}"
+                val newHeicAvail = """public function isAvailable(FileInfo ${'$'}file): bool {
+		if (extension_loaded('imagick') && in_array('HEIC', \Imagick::queryFormats('HEI*'), true)) {
+			return true;
+		}
+		${'$'}ffmpeg = Server::get(\OCP\IConfig::class)->getSystemValue('preview_ffmpeg_path', null);
+		return is_string(${'$'}ffmpeg) && file_exists(${'$'}ffmpeg);
+	}"""
+                if (heicContent.contains(oldHeicAvail)) {
+                    heicContent = heicContent.replace(oldHeicAvail, newHeicAvail)
+                    heicModified = true
+                }
+                val oldHeicThumb = "public function getThumbnail(File \$file, int \$maxX, int \$maxY): ?IImage {"
+                val newHeicThumbNeedle = "// Fallback to FFmpeg which decodes HEIC in ~30ms on Android"
+                if (!heicContent.contains(newHeicThumbNeedle) && heicContent.contains(oldHeicThumb)) {
+                    val thumbEndIdx = heicContent.indexOf("public function getThumbnail", 0)
+                    val nextMethodIdx = heicContent.indexOf("private function getResizedPreview", thumbEndIdx)
+                    if (thumbEndIdx != -1 && nextMethodIdx != -1) {
+                        val newHeicThumbMethod = """public function getThumbnail(File ${'$'}file, int ${'$'}maxX, int ${'$'}maxY): ?IImage {
+		if (!${'$'}this->isAvailable(${'$'}file)) {
+			return null;
+		}
+
+		${'$'}localPath = false;
+		if (${'$'}file->getStorage()->isLocal() && method_exists(${'$'}file->getStorage(), 'getLocalFile')) {
+			${'$'}direct = ${'$'}file->getStorage()->getLocalFile(${'$'}file->getInternalPath());
+			if (is_string(${'$'}direct) && file_exists(${'$'}direct)) {
+				${'$'}localPath = ${'$'}direct;
+			}
+		}
+		if (!${'$'}localPath) {
+			${'$'}localPath = ${'$'}this->getLocalFile(${'$'}file);
+		}
+		if (${'$'}localPath === false) {
+			return null;
+		}
+
+		if (extension_loaded('imagick') && in_array('HEIC', \Imagick::queryFormats('HEI*'), true)) {
+			try {
+				${'$'}bp = ${'$'}this->getResizedPreview(${'$'}localPath, ${'$'}maxX, ${'$'}maxY);
+				${'$'}bp->setFormat('jpg');
+				${'$'}this->cleanTmpFiles();
+				${'$'}image = new Image();
+				${'$'}image->loadFromData((string)${'$'}bp);
+				return ${'$'}image->valid() ? ${'$'}image : null;
+			} catch (\Exception ${'$'}e) {
+				// fallback to FFmpeg
+			}
+		}
+
+		// Fallback to FFmpeg which decodes HEIC in ~30ms on Android
+		${'$'}ffmpeg = Server::get(\OCP\IConfig::class)->getSystemValue('preview_ffmpeg_path', null);
+		if (is_string(${'$'}ffmpeg) && file_exists(${'$'}ffmpeg)) {
+			${'$'}outPath = Server::get(\OCP\ITempManager::class)->getTemporaryFile();
+			${'$'}cmd = [${'$'}ffmpeg, '-y', '-i', ${'$'}localPath, '-f', 'mjpeg', '-vframes', '1', ${'$'}outPath];
+			${'$'}env = ['LD_LIBRARY_PATH' => '/system/lib64', 'PATH' => getenv('PATH') ?: '/system/bin'];
+			${'$'}proc = proc_open(${'$'}cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], ${'$'}pipes, null, ${'$'}env);
+			if (is_resource(${'$'}proc)) {
+				stream_get_contents(${'$'}pipes[1]);
+				stream_get_contents(${'$'}pipes[2]);
+				${'$'}rc = proc_close(${'$'}proc);
+				if (${'$'}rc === 0 && file_exists(${'$'}outPath) && filesize(${'$'}outPath) > 0) {
+					${'$'}image = new Image();
+					${'$'}image->loadFromFile(${'$'}outPath);
+					@unlink(${'$'}outPath);
+					${'$'}this->cleanTmpFiles();
+					if (${'$'}image->valid()) {
+						${'$'}image->scaleDownToFit(${'$'}maxX, ${'$'}maxY);
+						return ${'$'}image;
+					}
+				}
+			}
+			if (file_exists(${'$'}outPath)) {
+				@unlink(${'$'}outPath);
+			}
+		}
+
+		${'$'}this->cleanTmpFiles();
+		return null;
+	}
+
+	"""
+                        heicContent = heicContent.substring(0, thumbEndIdx) + newHeicThumbMethod + heicContent.substring(nextMethodIdx)
+                        heicModified = true
+                    }
+                }
+                if (heicModified) {
+                    heicPhp.writeText(heicContent)
+                    Log.i(TAG, "Patched HEIC.php: standalone FFmpeg high-speed decoder installed.")
+                }
+            }
+
+            // 3c. Patch PreviewManager.php to register HEIC provider for non-Imagick environments
+            val pmPhp = File(nextcloudDir, "lib/private/PreviewManager.php")
+            if (pmPhp.exists()) {
+                var pmContent = pmPhp.readText()
+                val targetPm = "\$this->registerCoreProvider(Krita::class, '/application\\/x-krita/');"
+                val newPm = "\$this->registerCoreProvider(Krita::class, '/application\\/x-krita/');\n\t\t\$this->registerCoreProvider(HEIC::class, '/image\\/(x-)?hei(f|c)/');"
+                if (pmContent.contains(targetPm) && !pmContent.contains("\$this->registerCoreProvider(HEIC::class")) {
+                    pmContent = pmContent.replace(targetPm, newPm)
+                    pmPhp.writeText(pmContent)
+                    Log.i(TAG, "Patched PreviewManager.php: registered HEIC provider for FFmpeg.")
+                }
+            }
+
+            // 3d. Patch ApiController.php in files_external to prevent false 'External mount error' popups
+            val apiCtrlPhp = File(nextcloudDir, "apps/files_external/lib/Controller/ApiController.php")
+            if (apiCtrlPhp.exists()) {
+                var apiContent = apiCtrlPhp.readText()
+                val oldApiConfig = "'config' => \$mountConfig->jsonSerialize(true),"
+                val newApiConfig = "'config' => array_merge(\$mountConfig->jsonSerialize(true), ['status' => \\OCP\\Files\\StorageNotAvailableException::STATUS_SUCCESS]),"
+                if (apiContent.contains(oldApiConfig)) {
+                    apiContent = apiContent.replace(oldApiConfig, newApiConfig)
+                    apiCtrlPhp.writeText(apiContent)
+                    Log.i(TAG, "Patched ApiController.php: initialized mount point status to STATUS_SUCCESS.")
                 }
             }
 
@@ -1340,7 +1513,8 @@ ${'$'}CONFIG = [
         header.style.textTransform = 'uppercase';
         header.style.fontSize = '10.5px';
         header.style.color = 'var(--color-text-maxcontrast, #888)';
-        header.innerHTML = '<span>Storage Volumes</span><span id="nc-storage-refresh" style="cursor:pointer; font-size:12px; padding: 2px;" title="Refresh storage stats">🔄</span>';
+        const refreshSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>';
+        header.innerHTML = '<span>Storage Volumes</span><span id="nc-storage-refresh" style="cursor:pointer; padding: 2px; display:inline-flex; align-items:center;" title="Refresh storage stats">' + refreshSvg + '</span>';
         container.appendChild(header);
 
         const list = document.createElement('div');
@@ -1411,16 +1585,21 @@ ${'$'}CONFIG = [
                     const free = drive.freeFormatted || formatBytes(drive.freeBytes);
                     const pct = Math.min(100, Math.max(0, drive.percent || 0));
 
-                    const icon = (drive.id === 'primary_internal' || drive.displayName.toLowerCase().indexOf('phone') !== -1) 
-                        ? '📱' 
-                        : (drive.displayName.toLowerCase().indexOf('sd') !== -1 ? '💾' : '🔌');
+                    const phoneSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;flex-shrink:0;"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>';
+                    const sdSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;flex-shrink:0;"><path d="M4 4v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8.342a2 2 0 0 0-.586-1.414l-4.342-4.342A2 2 0 0 0 13.658 2H6a2 2 0 0 0-2 2z"></path><line x1="9" y1="6" x2="9" y2="9"></line><line x1="12" y1="6" x2="12" y2="9"></line><line x1="15" y1="6" x2="15" y2="9"></line></svg>';
+                    const usbSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;flex-shrink:0;"><path d="M10 2v6h4V2h-4zM6 8h12v4a6 6 0 0 1-12 0V8z"></path><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>';
+
+                    const cleanName = (drive.displayName || '').replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+                    const icon = (drive.id === 'primary_internal' || cleanName.toLowerCase().indexOf('phone') !== -1 || cleanName.toLowerCase().indexOf('internal') !== -1) 
+                        ? phoneSvg 
+                        : (cleanName.toLowerCase().indexOf('sd') !== -1 ? sdSvg : usbSvg);
 
                     const barColor = pct >= 90 ? '#e9322d' : (pct >= 80 ? '#e09b00' : 'var(--color-primary, #0082c9)');
 
                     driveRow.innerHTML = 
                         '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">' +
-                            '<span style="font-weight: 600; color: var(--color-main-text, #222); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 125px;">' +
-                                icon + ' ' + drive.displayName +
+                            '<span style="font-weight: 600; color: var(--color-main-text, #222); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 125px; display: inline-flex; align-items: center;">' +
+                                icon + cleanName +
                             '</span>' +
                             '<span style="font-size: 11px; opacity: 0.9; font-weight: 600; color: var(--color-primary, #0082c9);">' +
                                 free + ' free' +
@@ -1469,9 +1648,15 @@ ${'$'}CONFIG = [
 
             val layoutUser = File(nextcloudDir, "core/templates/layout.user.php")
             if (layoutUser.exists()) {
-                val layoutContent = layoutUser.readText()
-                if (!layoutContent.contains("storage_sidebar.js")) {
-                    val scriptTag = """<script nonce="<?php p(${'$'}_['cspNonce']); ?>" src="/storage_sidebar.js" defer></script>"""
+                var layoutContent = layoutUser.readText()
+                val targetRegex = Regex("""src="/storage_sidebar\.js[^"]*"""")
+                val newScriptTag = """src="/storage_sidebar.js?v=<?php p(@filemtime(\OC::${'$'}SERVERROOT . '/storage_sidebar.js') ?: '2'); ?>""""
+                if (layoutContent.contains("storage_sidebar.js")) {
+                    layoutContent = layoutContent.replace(targetRegex, newScriptTag)
+                    layoutUser.writeText(layoutContent)
+                    Log.i(TAG, "Patched layout.user.php: updated storage_sidebar.js script tag with filemtime cache buster.")
+                } else {
+                    val scriptTag = """<script nonce="<?php p(${'$'}_['cspNonce']); ?>" $newScriptTag defer></script>"""
                     val patchedLayout = layoutContent.replace("</body>", "    $scriptTag\n</body>")
                     layoutUser.writeText(patchedLayout)
                     Log.i(TAG, "Patched layout.user.php: registered storage_sidebar.js with CSP nonce.")
@@ -1502,6 +1687,12 @@ ${'$'}CONFIG = [
 
     private fun patchLocalPhpWithBridge(input: String): String {
         var text = input
+
+        // 0. Normalize getSourcePath to avoid double slash when datadir is "/"
+        text = text.replace(
+            "\$fullPath = \$this->datadir . \$path;",
+            "\$fullPath = rtrim(\$this->datadir, '/') . '/' . ltrim(\$path, '/');"
+        )
 
         // 1. mkdir delegation
         text = text.replace(

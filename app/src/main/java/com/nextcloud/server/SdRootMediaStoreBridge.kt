@@ -219,16 +219,16 @@ object SdRootMediaStoreBridge {
             "" // Empty string = Bare Root of the SD card
         }
 
-        // 3. Dotfile Exception Handling (.ocdata, .htaccess, .part)
-        // MediaStore rejects files starting with '.', so handle them via SAF tree directly
-        if (fileName.startsWith(".")) {
+        // 3. SAF Tree direct opening if granted (Prioritize SAF for physical SD cards if available)
+        val safManager = SdCardSafManager(context)
+        if (fileName.startsWith(".") || safManager.hasSafAccess(uuidUpper)) {
             val safPfd = openViaSafFallback(context, uuidUpper, subPath, mode)
             if (safPfd != null) return safPfd
         }
 
         // 4. Android 8–17 MediaStore.Files delegation (Physical MicroSD Cards)
         try {
-            val volumeUri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val volumeUri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 MediaStore.Files.getContentUri(uuidLower)
             } else {
                 MediaStore.Files.getContentUri("external")
@@ -238,7 +238,7 @@ object SdRootMediaStoreBridge {
             if (targetUri == null) {
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         if (relativeDir.isNotEmpty()) {
                             put(MediaStore.MediaColumns.RELATIVE_PATH, relativeDir)
                         }
@@ -484,7 +484,7 @@ object SdRootMediaStoreBridge {
             // 3. MediaStore delete (for physical SD card files)
             try {
                 val resolver = context.contentResolver
-                val volumeUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val volumeUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     MediaStore.Files.getContentUri(uuid.lowercase())
                 } else {
                     MediaStore.Files.getContentUri("external")

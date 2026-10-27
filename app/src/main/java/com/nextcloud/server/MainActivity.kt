@@ -195,13 +195,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Physical SD Cards are 100% managed via MediaStore root bridge and MUST NEVER prompt for SAF
-        if (storage.isSdCard || storage.displayName.contains("SD", ignoreCase = true)) {
-            Log.d("MainActivity", "Storage ${storage.id} is an SD Card, skipping SAF prompt")
-            return
-        }
-
-        if (storage.isWritable || storage.isReadOnlyFs) {
+        if (storage.hasSafAccess || storage.isReadOnlyFs) {
             return
         }
 
@@ -209,9 +203,6 @@ class MainActivity : AppCompatActivity() {
         if (isAutoPrompt && SdCardAccessDialog.wasDialogShown(this, cleanUuid)) {
             return
         }
-
-        // Mark immediately in SharedPreferences to prevent re-entrancy from parallel status events
-        SdCardAccessDialog.markDialogShown(this, cleanUuid)
 
         activeSafDialog = SdCardAccessDialog(
             context = this,
@@ -1223,6 +1214,10 @@ class MainActivity : AppCompatActivity() {
                             subtitleView.text = "⚠️ Hardware Read-Only (${storage.fsType}) • Needs exFAT/FAT32 format"
                             subtitleView.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_danger))
                             subtitleView.visibility = View.VISIBLE
+                        } else if (!storage.hasSafAccess && (storage.isSdCard || !storage.isWritable)) {
+                            subtitleView.text = "⚠️ Tap to enable folder write access"
+                            subtitleView.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.m3_primary))
+                            subtitleView.visibility = View.VISIBLE
                         } else {
                             subtitleView.visibility = View.GONE
                         }
@@ -1257,8 +1252,17 @@ class MainActivity : AppCompatActivity() {
                                     .setMessage("This drive is mounted as Read-Only by Android (formatted as NTFS or unplugged without safe removal).\n\nTo allow write access in Nextcloud, reformat the drive as exFAT or FAT32, or run disk error checking (chkdsk) on PC.")
                                     .setPositiveButton("OK", null)
                                     .show()
+                            } else if (!storage.hasSafAccess && (storage.isSdCard || !storage.isWritable)) {
+                                promptSafAccess(storage, false)
                             } else {
                                 Toast.makeText(this@MainActivity, "${storage.displayName}: Full read & write access active", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+
+                        if (!storage.isReadOnlyFs && !storage.hasSafAccess && (storage.isSdCard || !storage.isWritable)) {
+                            val cleanUuid = storage.id.removeSuffix("_root").removeSuffix("_uploads")
+                            if (!SdCardAccessDialog.wasDialogShown(this@MainActivity, cleanUuid)) {
+                                promptSafAccess(storage, true)
                             }
                         }
 
